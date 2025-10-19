@@ -1,17 +1,77 @@
 const { PrismaClient } = require("@prisma/client");
 const prisma = new PrismaClient();
 
-// Отримати всі продукти з інгредієнтами
+// ОНОВЛЕНА ФУНКЦІЯ
 const getAllProducts = async (req, res, next) => {
     try {
-        const products = await prisma.product.findMany({
-            include: {
-                recipes: { include: { ingredient: true } } // включає інгредієнти через рецепт
+        // 1. Отримуємо параметри для фільтрації, пагінації та сортування з req.query
+        const {
+            page = 1,
+            limit = 10,
+            search,
+            category, // Припускаємо, що у вас є поле category
+            minPrice,
+            maxPrice,
+            sortBy = 'createdAt',
+            order = 'desc'
+        } = req.query;
+
+        // 2. Розраховуємо зміщення для пагінації
+        const skip = (parseInt(page) - 1) * parseInt(limit);
+
+        // 3. Створюємо об'єкт для фільтрації (where)
+        const where = {};
+
+        if (search) {
+            where.OR = [
+                { name: { contains: search, mode: 'insensitive' } },
+                { description: { contains: search, mode: 'insensitive' } }
+            ];
+        }
+        if (category) {
+            where.category = category; // Якщо у вас є модель Category, тут буде { name: category }
+        }
+        if (minPrice || maxPrice) {
+            where.price = {};
+            if (minPrice) where.price.gte = parseFloat(minPrice);
+            if (maxPrice) where.price.lte = parseFloat(maxPrice);
+        }
+
+        // 4. Створюємо об'єкт для сортування (orderBy)
+        const orderBy = {};
+        orderBy[sortBy] = order;
+
+        // 5. Виконуємо два запити паралельно: один для отримання даних, інший для загальної кількості
+        const [products, total] = await Promise.all([
+            prisma.product.findMany({
+                where,
+                skip,
+                take: parseInt(limit),
+                orderBy,
+                // Важливо: додаємо ваш `include` для отримання рецептів та інгредієнтів
+                include: {
+                    recipes: { include: { ingredient: true } }
+                }
+            }),
+            prisma.product.count({ where })
+        ]);
+
+        // 6. Формуємо відповідь з даними та інформацією про пагінацію
+        res.json({
+            data: products,
+            pagination: {
+                page: parseInt(page),
+                limit: parseInt(limit),
+                total,
+                totalPages: Math.ceil(total / parseInt(limit)),
+                hasMore: skip + products.length < total
             }
         });
-        res.json(products);
-    } catch (err) { next(err); }
+    } catch (err) {
+        next(err); // Передаємо помилку в централізований обробник
+    }
 };
+
 
 // Отримати конкретний продукт з інгредієнтами
 const getProductById = async (req, res, next) => {

@@ -1,30 +1,49 @@
-const jwt = require("jsonwebtoken");
-const { PrismaClient } = require("@prisma/client");
-const prisma = new PrismaClient();
+const { verifyAccessToken } = require('../utils/jwt');
 
-const authenticateToken = async (req, res, next) => {
-  const authHeader = req.headers["authorization"];
-  const token = authHeader && authHeader.split(" ")[1];
+// Middleware to check for a valid JWT and attach user info to the request
+function authenticateToken(req, res, next) {
+    try {
+        const authHeader = req.headers.authorization;
 
-  if (!token) return res.status(401).json({ error: "Access token required" });
+        if (!authHeader || !authHeader.startsWith('Bearer ')) {
+            return res.status(401).json({
+                error: 'Authentication token is missing'
+            });
+        }
 
-  try {
-    const decoded = jwt.verify(token, process.env.JWT_SECRET);
-    const user = await prisma.user.findUnique({ where: { id: decoded.userId } });
-    if (!user) return res.status(401).json({ error: "User not found" });
+        const token = authHeader.substring(7);
+        const decoded = verifyAccessToken(token);
 
-    req.user = user;
-    next();
-  } catch (err) {
-    return res.status(403).json({ error: "Invalid token" });
-  }
+        req.user = decoded; // Adds { userId, role } to the request object
+        next();
+    } catch (error) {
+        return res.status(401).json({
+            error: 'Invalid or expired token'
+        });
+    }
+}
+
+// Middleware to check if the authenticated user has one of the allowed roles
+function requireRole(...allowedRoles) {
+    return (req, res, next) => {
+        if (!req.user) {
+            return res.status(401).json({
+                error: 'Authentication is required'
+            });
+        }
+
+        const userRole = req.user.role;
+        if (!allowedRoles.includes(userRole)) {
+            return res.status(403).json({
+                error: 'Insufficient permissions to perform this action'
+            });
+        }
+
+        next();
+    };
+}
+
+module.exports = {
+    authenticateToken,
+    requireRole
 };
-
-const requireRole = (role) => {
-  return (req, res, next) => {
-    if (req.user.role !== role) return res.status(403).json({ error: "Insufficient permissions" });
-    next();
-  };
-};
-
-module.exports = { authenticateToken, requireRole };
