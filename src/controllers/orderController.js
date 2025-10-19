@@ -1,24 +1,99 @@
 const { PrismaClient } = require("@prisma/client");
 const prisma = new PrismaClient();
 
-// Отримати всі замовлення з деталями та продуктами
+// ОНОВЛЕНА ФУНКЦІЯ
 const getAllOrders = async (req, res, next) => {
     try {
-        const orders = await prisma.order.findMany({
-            include: {
-                details: {
-                    include: {
-                        product: {
-                            include: {
-                                recipes: { include: { ingredient: true } }
+        // 1. Отримуємо параметри для фільтрації, пагінації та сортування
+        const {
+            page = 1,
+            limit = 10,
+            search,         // Для пошуку за іменем клієнта або назвою продукту
+            customerId,
+            minPrice,
+            maxPrice,
+            startDate,
+            endDate,
+            sortBy = 'createdAt',
+            order = 'desc'
+        } = req.query;
+
+        // 2. Розраховуємо зміщення для пагінації
+        const skip = (parseInt(page) - 1) * parseInt(limit);
+
+        // 3. Створюємо складний об'єкт для фільтрації (where)
+        const where = {};
+
+        // Пошук за іменем клієнта АБО назвою продукту в замовленні
+        if (search) {
+            where.OR = [
+                { customer: { firstName: { contains: search, mode: 'insensitive' } } },
+                { customer: { lastName: { contains: search, mode: 'insensitive' } } },
+                { details: { some: { product: { name: { contains: search, mode: 'insensitive' } } } } }
+            ];
+        }
+
+        // Фільтрація за конкретним клієнтом
+        if (customerId) {
+            where.customerId = parseInt(customerId);
+        }
+
+        // Фільтрація за ціною
+        if (minPrice || maxPrice) {
+            where.totalPrice = {};
+            if (minPrice) where.totalPrice.gte = parseFloat(minPrice);
+            if (maxPrice) where.totalPrice.lte = parseFloat(maxPrice);
+        }
+
+        // Фільтрація за датою створення
+        if (startDate || endDate) {
+            where.createdAt = {};
+            if (startDate) where.createdAt.gte = new Date(startDate);
+            if (endDate) where.createdAt.lte = new Date(endDate);
+        }
+
+        // 4. Створюємо об'єкт для сортування
+        const orderBy = {};
+        orderBy[sortBy] = order;
+
+        // 5. Виконуємо запити до БД паралельно
+        const [orders, total] = await Promise.all([
+            prisma.order.findMany({
+                where,
+                skip,
+                take: parseInt(limit),
+                orderBy,
+                // Зберігаємо ваш глибокий `include` для отримання всіх деталей
+                include: {
+                    customer: true, // Додамо клієнта для повноти картини
+                    details: {
+                        include: {
+                            product: {
+                                include: {
+                                    recipes: { include: { ingredient: true } }
+                                }
                             }
                         }
                     }
                 }
+            }),
+            prisma.order.count({ where })
+        ]);
+
+        // 6. Формуємо відповідь
+        res.json({
+            data: orders,
+            pagination: {
+                page: parseInt(page),
+                limit: parseInt(limit),
+                total,
+                totalPages: Math.ceil(total / parseInt(limit)),
+                hasMore: skip + orders.length < total
             }
         });
-        res.json(orders);
-    } catch (err) { next(err); }
+    } catch (err) {
+        next(err);
+    }
 };
 
 // Отримати конкретне замовлення по id

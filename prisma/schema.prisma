@@ -8,37 +8,64 @@ datasource db {
 }
 
 model User {
-  id       Int      @id @default(autoincrement())
-  email    String   @unique
-  password String
-  role     String   @default("USER")
+  id        Int      @id @default(autoincrement())
+  email     String   @unique
+  password  String
+  name      String
+  role      Role     @default(USER)
+  avatar    String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  passwordResetToken   String?   @unique
+  passwordResetExpires DateTime?
+  files     File[]   @relation("UserFiles") // ��������� ������
+
+}
+
+model File {
+  id           Int      @id @default(autoincrement())
+  filename     String
+  originalName String
+  mimetype     String
+  size         Int
+  path         String
+  uploadedBy   Int
+  createdAt    DateTime @default(now())
+  user         User     @relation("UserFiles", fields: [uploadedBy], references: [id])
+}
+
+enum Role {
+  USER
+  ADMIN
+  MODERATOR
 }
 
 model Customer {
-  id        Int      @id @default(autoincrement())
+  id        Int     @id @default(autoincrement())
   firstName String
   lastName  String
-  email     String   @unique
+  email     String  @unique
   orders    Order[]
 }
 
 model Product {
-  id          Int       @id @default(autoincrement())
-  name        String
-  description String?
-  price       Float
-  recipes     Recipe[]
+  id           Int           @id @default(autoincrement())
+  name         String
+  description  String?
+  price        Float
+  createdAt   DateTime @default(now())
+  recipes      Recipe[]
   orderDetails OrderDetail[]
 }
 
 model Ingredient {
-  id   Int    @id @default(autoincrement())
-  name String
+  id      Int      @id @default(autoincrement())
+  name    String
   recipes Recipe[]
 }
 
 model Recipe {
-  id           Int       @id @default(autoincrement())
+  id           Int   @id @default(autoincrement())
   productId    Int
   ingredientId Int
   quantity     Float
@@ -57,7 +84,7 @@ model Order {
 }
 
 model OrderDetail {
-  id        Int     @id @default(autoincrement())
+  id        Int @id @default(autoincrement())
   orderId   Int
   productId Int
   quantity  Int
