@@ -1,19 +1,19 @@
 const { PrismaClient } = require("@prisma/client");
 const Joi = require("joi");
-const { getIO } = require('../socket');
 
 const prisma = new PrismaClient();
 
-// Get io instance with error handling
+// --- Socket.IO ---
 let io;
-try {
-    io = getIO();
-} catch (error) {
-    console.error("Failed to get Socket.IO instance in productController.", error);
-    io = { emit: () => console.warn("Socket.IO not ready in productController.") };
-}
+const setIO = (socketInstance) => {
+    io = socketInstance;
+};
+const getIO = () => {
+    if (!io) throw new Error("Socket.IO not initialized!");
+    return io;
+};
 
-// --- Validation schemas ---
+// --- Validation schema ---
 const productSchema = Joi.object({
     name: Joi.string().min(1).required(),
     description: Joi.string().allow(null, ''),
@@ -23,16 +23,7 @@ const productSchema = Joi.object({
 // --- GET all products ---
 const getAllProducts = async (req, res, next) => {
     try {
-        const {
-            page = 1,
-            limit = 10,
-            search,
-            minPrice,
-            maxPrice,
-            sortBy = 'createdAt',
-            order = 'desc'
-        } = req.query;
-
+        const { page = 1, limit = 10, search, minPrice, maxPrice, sortBy = 'createdAt', order = 'desc' } = req.query;
         const skip = (parseInt(page) - 1) * parseInt(limit);
 
         const where = {};
@@ -50,8 +41,7 @@ const getAllProducts = async (req, res, next) => {
 
         const validSortFields = ['id', 'name', 'price', 'createdAt'];
         const safeSortBy = validSortFields.includes(sortBy) ? sortBy : 'id';
-        const orderBy = {};
-        orderBy[safeSortBy] = order;
+        const orderBy = { [safeSortBy]: order };
 
         const [products, total] = await Promise.all([
             prisma.product.findMany({
@@ -87,9 +77,7 @@ const getAllProducts = async (req, res, next) => {
                 hasMore: skip + products.length < total
             }
         });
-    } catch (err) {
-        next(err);
-    }
+    } catch (err) { next(err); }
 };
 
 // --- GET product by ID ---
@@ -115,11 +103,8 @@ const getProductById = async (req, res, next) => {
         });
 
         if (!product) return res.status(404).json({ error: "Product not found" });
-
         res.json(product);
-    } catch (err) {
-        next(err);
-    }
+    } catch (err) { next(err); }
 };
 
 // --- CREATE product ---
@@ -140,12 +125,8 @@ const createProduct = async (req, res, next) => {
             }
         });
 
-        io.emit('product:created', product);
-        io.emit('notification:new', {
-            type: 'success',
-            message: `New product added: ${product.name}`,
-            productId: product.id
-        });
+        getIO().emit('product:created', product);
+        getIO().emit('notification:new', { type: 'success', message: `New product added: ${product.name}`, productId: product.id });
 
         res.status(201).json(product);
     } catch (err) {
@@ -160,7 +141,6 @@ const createProduct = async (req, res, next) => {
 const updateProduct = async (req, res, next) => {
     try {
         const productId = Number(req.params.id);
-
         const { error, value } = productSchema.validate(req.body);
         if (error) return res.status(400).json({ error: error.details[0].message });
 
@@ -180,12 +160,8 @@ const updateProduct = async (req, res, next) => {
             }
         });
 
-        io.emit('product:updated', product);
-        io.emit('notification:new', {
-            type: 'info',
-            message: `Product updated: ${product.name}`,
-            productId: product.id
-        });
+        getIO().emit('product:updated', product);
+        getIO().emit('notification:new', { type: 'info', message: `Product updated: ${product.name}`, productId: product.id });
 
         res.json(product);
     } catch (err) {
@@ -205,12 +181,8 @@ const deleteProduct = async (req, res, next) => {
 
         await prisma.product.delete({ where: { id: productId } });
 
-        io.emit('product:deleted', { id: productId });
-        io.emit('notification:new', {
-            type: 'warning',
-            message: `Product deleted: ${existingProduct.name}`,
-            productId
-        });
+        getIO().emit('product:deleted', { id: productId });
+        getIO().emit('notification:new', { type: 'warning', message: `Product deleted: ${existingProduct.name}`, productId });
 
         res.status(200).json({ message: "Product deleted" });
     } catch (err) {
@@ -221,6 +193,8 @@ const deleteProduct = async (req, res, next) => {
 };
 
 module.exports = {
+    setIO,
+    getIO,
     getAllProducts,
     getProductById,
     createProduct,
