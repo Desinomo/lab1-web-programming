@@ -1,35 +1,46 @@
 const { PrismaClient } = require("@prisma/client");
+const Joi = require("joi");
+const { getIO } = require('../socket');
+
 const prisma = new PrismaClient();
 
-// ОНОВЛЕНА ФУНКЦІЯ
+// Get io instance with error handling
+let io;
+try {
+    io = getIO();
+} catch (error) {
+    console.error("Failed to get Socket.IO instance in productController.", error);
+    io = { emit: () => console.warn("Socket.IO not ready in productController.") };
+}
+
+// --- Validation schemas ---
+const productSchema = Joi.object({
+    name: Joi.string().min(1).required(),
+    description: Joi.string().allow(null, ''),
+    price: Joi.number().positive().required()
+});
+
+// --- GET all products ---
 const getAllProducts = async (req, res, next) => {
     try {
-        // 1. Отримуємо параметри для фільтрації, пагінації та сортування з req.query
         const {
             page = 1,
             limit = 10,
             search,
-            category, // Припускаємо, що у вас є поле category
             minPrice,
             maxPrice,
             sortBy = 'createdAt',
             order = 'desc'
         } = req.query;
 
-        // 2. Розраховуємо зміщення для пагінації
         const skip = (parseInt(page) - 1) * parseInt(limit);
 
-        // 3. Створюємо об'єкт для фільтрації (where)
         const where = {};
-
         if (search) {
             where.OR = [
                 { name: { contains: search, mode: 'insensitive' } },
                 { description: { contains: search, mode: 'insensitive' } }
             ];
-        }
-        if (category) {
-            where.category = category; // Якщо у вас є модель Category, тут буде { name: category }
         }
         if (minPrice || maxPrice) {
             where.price = {};
@@ -37,26 +48,35 @@ const getAllProducts = async (req, res, next) => {
             if (maxPrice) where.price.lte = parseFloat(maxPrice);
         }
 
-        // 4. Створюємо об'єкт для сортування (orderBy)
+        const validSortFields = ['id', 'name', 'price', 'createdAt'];
+        const safeSortBy = validSortFields.includes(sortBy) ? sortBy : 'id';
         const orderBy = {};
-        orderBy[sortBy] = order;
+        orderBy[safeSortBy] = order;
 
-        // 5. Виконуємо два запити паралельно: один для отримання даних, інший для загальної кількості
         const [products, total] = await Promise.all([
             prisma.product.findMany({
                 where,
                 skip,
                 take: parseInt(limit),
                 orderBy,
-                // Важливо: додаємо ваш `include` для отримання рецептів та інгредієнтів
-                include: {
-                    recipes: { include: { ingredient: true } }
+                select: {
+                    id: true,
+                    name: true,
+                    description: true,
+                    price: true,
+                    createdAt: true,
+                    recipes: {
+                        select: {
+                            id: true,
+                            quantity: true,
+                            ingredient: { select: { id: true, name: true } }
+                        }
+                    }
                 }
             }),
             prisma.product.count({ where })
         ]);
 
-        // 6. Формуємо відповідь з даними та інформацією про пагінацію
         res.json({
             data: products,
             pagination: {
@@ -68,53 +88,142 @@ const getAllProducts = async (req, res, next) => {
             }
         });
     } catch (err) {
-        next(err); // Передаємо помилку в централізований обробник
+        next(err);
     }
 };
 
-
-// Отримати конкретний продукт з інгредієнтами
+// --- GET product by ID ---
 const getProductById = async (req, res, next) => {
     try {
+        const productId = Number(req.params.id);
         const product = await prisma.product.findUnique({
-            where: { id: Number(req.params.id) },
-            include: {
-                recipes: { include: { ingredient: true } }
+            where: { id: productId },
+            select: {
+                id: true,
+                name: true,
+                description: true,
+                price: true,
+                createdAt: true,
+                recipes: {
+                    select: {
+                        id: true,
+                        quantity: true,
+                        ingredient: { select: { id: true, name: true } }
+                    }
+                }
             }
         });
 
         if (!product) return res.status(404).json({ error: "Product not found" });
+
         res.json(product);
-    } catch (err) { next(err); }
+    } catch (err) {
+        next(err);
+    }
 };
 
-// Створити продукт
+// --- CREATE product ---
 const createProduct = async (req, res, next) => {
     try {
-        const { name, description, price } = req.body;
-        const product = await prisma.product.create({ data: { name, description, price } });
+        const { error, value } = productSchema.validate(req.body);
+        if (error) return res.status(400).json({ error: error.details[0].message });
+
+        const product = await prisma.product.create({
+            data: value,
+            select: {
+                id: true,
+                name: true,
+                description: true,
+                price: true,
+                createdAt: true,
+                recipes: { select: { id: true } }
+            }
+        });
+
+        io.emit('product:created', product);
+        io.emit('notification:new', {
+            type: 'success',
+            message: `New product added: ${product.name}`,
+            productId: product.id
+        });
+
         res.status(201).json(product);
-    } catch (err) { next(err); }
+    } catch (err) {
+        if (err.code === 'P2002' && err.meta?.target?.includes('name')) {
+            return res.status(409).json({ error: "Product with this name already exists" });
+        }
+        next(err);
+    }
 };
 
-// Оновити продукт
+// --- UPDATE product ---
 const updateProduct = async (req, res, next) => {
     try {
-        const { name, description, price } = req.body;
+        const productId = Number(req.params.id);
+
+        const { error, value } = productSchema.validate(req.body);
+        if (error) return res.status(400).json({ error: error.details[0].message });
+
+        const existingProduct = await prisma.product.findUnique({ where: { id: productId } });
+        if (!existingProduct) return res.status(404).json({ error: "Product not found for update" });
+
         const product = await prisma.product.update({
-            where: { id: Number(req.params.id) },
-            data: { name, description, price },
+            where: { id: productId },
+            data: value,
+            select: {
+                id: true,
+                name: true,
+                description: true,
+                price: true,
+                createdAt: true,
+                recipes: { select: { id: true } }
+            }
         });
+
+        io.emit('product:updated', product);
+        io.emit('notification:new', {
+            type: 'info',
+            message: `Product updated: ${product.name}`,
+            productId: product.id
+        });
+
         res.json(product);
-    } catch (err) { next(err); }
+    } catch (err) {
+        if (err.code === 'P2002' && err.meta?.target?.includes('name')) {
+            return res.status(409).json({ error: "Another product with this name already exists" });
+        }
+        next(err);
+    }
 };
 
-// Видалити продукт
+// --- DELETE product ---
 const deleteProduct = async (req, res, next) => {
     try {
-        await prisma.product.delete({ where: { id: Number(req.params.id) } });
-        res.json({ message: "Product deleted" });
-    } catch (err) { next(err); }
+        const productId = Number(req.params.id);
+        const existingProduct = await prisma.product.findUnique({ where: { id: productId } });
+        if (!existingProduct) return res.status(404).json({ error: "Product not found for deletion" });
+
+        await prisma.product.delete({ where: { id: productId } });
+
+        io.emit('product:deleted', { id: productId });
+        io.emit('notification:new', {
+            type: 'warning',
+            message: `Product deleted: ${existingProduct.name}`,
+            productId
+        });
+
+        res.status(200).json({ message: "Product deleted" });
+    } catch (err) {
+        if (err.code === 'P2025') return res.status(404).json({ error: "Product not found for deletion" });
+        if (err.code === 'P2003') return res.status(400).json({ error: "Cannot delete product because it is currently in use" });
+        next(err);
+    }
 };
 
-module.exports = { getAllProducts, getProductById, createProduct, updateProduct, deleteProduct };
+module.exports = {
+    getAllProducts,
+    getProductById,
+    createProduct,
+    updateProduct,
+    deleteProduct
+};

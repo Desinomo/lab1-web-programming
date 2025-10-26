@@ -6,10 +6,13 @@ const cors = require("cors");
 const rateLimit = require("express-rate-limit");
 const swaggerUi = require("swagger-ui-express");
 const swaggerSpecs = require("./config/swagger");
+const http = require('http'); // 1. Додаємо імпорт http
+const { initSocket } = require('./socket'); // 2. Імпортуємо функцію ініціалізації Socket.IO
 
 dotenv.config();
 
-const userRoutes = require("./routes/userRoutes");
+// Імпортуємо ваші роути
+const userRoutes = require("./routes/userRoutes"); // Перейменуйте на authRoutes, якщо потрібно
 const customerRoutes = require("./routes/customerRoutes");
 const productRoutes = require("./routes/productRoutes");
 const ingredientRoutes = require("./routes/ingredientRoutes");
@@ -18,6 +21,8 @@ const orderRoutes = require("./routes/orderRoutes");
 const fileRoutes = require('./routes/fileRoutes');
 
 const app = express();
+const server = http.createServer(app); // 3. Створюємо HTTP сервер на базі Express app
+const io = initSocket(server); // 4. Ініціалізуємо Socket.IO, передаючи HTTP сервер
 
 // Middleware
 app.use(helmet());
@@ -42,7 +47,7 @@ app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerSpecs, {
 }));
 
 // Роути
-app.use("/api/auth", userRoutes);
+app.use("/api/auth", userRoutes); // Використовуйте authRoutes, якщо перейменували
 app.use("/api/customers", customerRoutes);
 app.use("/api/products", productRoutes);
 app.use("/api/ingredients", ingredientRoutes);
@@ -62,4 +67,13 @@ app.use((err, req, res, next) => {
     res.status(err.status || 500).json({ error: err.message || 'Внутрішня помилка сервера' });
 });
 
-module.exports = app; // експортуємо для тестів
+// Експорт app залишається для тестів
+module.exports = app;
+
+// --- Запуск сервера ---
+const PORT = process.env.PORT || 3000;
+// 5. Запускаємо HTTP сервер замість app.listen
+server.listen(PORT, () => {
+    console.log(`Сервер запущено на порту ${PORT}`);
+    console.log(`Документація API: http://localhost:${PORT}/api-docs`);
+});
