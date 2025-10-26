@@ -5,18 +5,9 @@ const { getIO } = require('../socket');
 
 const prisma = new PrismaClient();
 
-// Отримати екземпляр io
-let io;
-try {
-    io = getIO();
-} catch (error) {
-    console.error("Failed to get Socket.IO instance in fileController.", error);
-    io = { emit: () => console.warn("Socket.IO not ready in fileController.") };
-}
-
-// --- ЗАВАНТАЖЕННЯ ФАЙЛУ ---
-async function uploadFile(req, res, next) {
+const uploadFile = async (req, res, next) => {
     try {
+        const io = getIO();
         if (!req.file) return res.status(400).json({ error: 'File not provided' });
 
         const fileData = {
@@ -31,65 +22,46 @@ async function uploadFile(req, res, next) {
         const file = await prisma.file.create({ data: fileData });
 
         io.emit('file:uploaded', file);
-        io.emit('notification:new', {
-            type: 'info',
-            message: `New file uploaded: ${file.originalName}`,
-            fileId: file.id
-        });
+        io.emit('notification:new', { type: 'info', message: `New file uploaded: ${file.originalName}`, fileId: file.id });
 
         res.status(201).json({ message: 'File uploaded successfully', file });
-
-    } catch (error) {
-        // Видалити тимчасовий файл у разі помилки
+    } catch (err) {
         if (req.file) await fs.unlink(req.file.path).catch(console.error);
-        next(error);
+        next(err);
     }
-}
+};
 
-// --- ОТРИМАННЯ ФАЙЛУ ---
-async function getFile(req, res, next) {
+const getFile = async (req, res, next) => {
     try {
         const fileId = parseInt(req.params.id);
         const file = await prisma.file.findUnique({ where: { id: fileId } });
-
         if (!file) return res.status(404).json({ error: 'File not found' });
-
         res.sendFile(path.resolve(file.path));
+    } catch (err) { next(err); }
+};
 
-    } catch (error) {
-        next(error);
-    }
-}
-
-// --- ВИДАЛЕННЯ ФАЙЛУ ---
-async function deleteFile(req, res, next) {
+const deleteFile = async (req, res, next) => {
     try {
+        const io = getIO();
         const fileId = parseInt(req.params.id);
         const file = await prisma.file.findUnique({ where: { id: fileId } });
-
         if (!file) return res.status(404).json({ error: 'File not found' });
 
-        // Перевірка прав доступу: автор або ADMIN
         if (file.uploadedBy !== req.user.userId && req.user.role !== 'ADMIN') {
             return res.status(403).json({ error: 'Insufficient permissions to delete this file' });
         }
 
         await prisma.file.delete({ where: { id: fileId } });
-        await fs.unlink(file.path);
+        await fs.unlink(file.path).catch(console.error);
 
         io.emit('file:deleted', { id: fileId });
-        io.emit('notification:new', {
-            type: 'warning',
-            message: `File deleted: ${file.originalName}`,
-            fileId: file.id
-        });
+        io.emit('notification:new', { type: 'warning', message: `File deleted: ${file.originalName}`, fileId: file.id });
 
         res.status(200).json({ message: 'File deleted successfully' });
-
     } catch (err) {
         if (err.code === 'P2025') return res.status(404).json({ error: "File not found for deletion" });
         next(err);
     }
-}
+};
 
 module.exports = { uploadFile, getFile, deleteFile };

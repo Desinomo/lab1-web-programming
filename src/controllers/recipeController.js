@@ -3,19 +3,10 @@ const { getIO } = require('../socket'); // Імпорт getIO
 
 const prisma = new PrismaClient();
 
-// Отримуємо екземпляр io
-let io;
-try {
-    io = getIO();
-} catch (error) {
-    console.error("Failed to get Socket.IO instance in recipeController.", error);
-    io = { emit: () => console.warn("Socket.IO not ready in recipeController.") };
-}
-
-
 // Отримати всі рецепти (з пагінацією, фільтрацією та групуванням)
 const getAllRecipes = async (req, res, next) => {
     try {
+        const io = getIO(); // <- виклик всередині функції
         const {
             page = 1,
             limit = 10,
@@ -35,15 +26,10 @@ const getAllRecipes = async (req, res, next) => {
                 { ingredient: { name: { contains: search, mode: 'insensitive' } } }
             ];
         }
-        if (productId) {
-            where.productId = parseInt(productId);
-        }
-        if (ingredientId) {
-            where.ingredientId = parseInt(ingredientId);
-        }
+        if (productId) where.productId = parseInt(productId);
+        if (ingredientId) where.ingredientId = parseInt(ingredientId);
 
-        const orderBy = {};
-        orderBy[sortBy] = order;
+        const orderBy = { [sortBy]: order };
 
         const [recipes, total] = await Promise.all([
             prisma.recipe.findMany({
@@ -51,20 +37,14 @@ const getAllRecipes = async (req, res, next) => {
                 skip,
                 take: parseInt(limit),
                 orderBy,
-                include: {
-                    product: true,
-                    ingredient: true
-                }
+                include: { product: true, ingredient: true }
             }),
             prisma.recipe.count({ where })
         ]);
 
         const grouped = recipes.reduce((acc, r) => {
             if (!acc[r.productId]) {
-                acc[r.productId] = {
-                    product: r.product,
-                    ingredients: []
-                };
+                acc[r.productId] = { product: r.product, ingredients: [] };
             }
             acc[r.productId].ingredients.push({
                 id: r.ingredient.id,
@@ -74,6 +54,9 @@ const getAllRecipes = async (req, res, next) => {
             });
             return acc;
         }, {});
+
+        // Можна відправляти подію, якщо потрібно
+        // io.emit('recipes:fetched', grouped);
 
         res.json({
             data: Object.values(grouped),
@@ -85,7 +68,6 @@ const getAllRecipes = async (req, res, next) => {
                 hasMore: skip + recipes.length < total
             }
         });
-
     } catch (err) {
         next(err);
     }
@@ -94,6 +76,7 @@ const getAllRecipes = async (req, res, next) => {
 // Отримати конкретний рецепт по продукту
 const getRecipeById = async (req, res, next) => {
     try {
+        const io = getIO();
         const recipes = await prisma.recipe.findMany({
             where: { productId: Number(req.params.id) },
             include: { product: true, ingredient: true }
@@ -111,22 +94,25 @@ const getRecipeById = async (req, res, next) => {
             }))
         };
 
+        // io.emit('recipe:fetched', grouped); // за потреби
+
         res.json(grouped);
-    } catch (err) { next(err); }
+    } catch (err) {
+        next(err);
+    }
 };
 
 // Створити рецепт
 const createRecipe = async (req, res, next) => {
     try {
+        const io = getIO();
         const { productId, ingredientId, quantity } = req.body;
         const recipe = await prisma.recipe.create({
             data: { productId, ingredientId, quantity },
             include: { product: true, ingredient: true }
         });
 
-        // Надсилаємо подію про створення
         io.emit('recipe:created', recipe);
-
         res.status(201).json(recipe);
     } catch (err) { next(err); }
 };
@@ -134,52 +120,41 @@ const createRecipe = async (req, res, next) => {
 // Оновити рецепт
 const updateRecipe = async (req, res, next) => {
     try {
+        const io = getIO();
         const { productId, ingredientId, quantity } = req.body;
-        const recipeId = Number(req.params.id); // Отримуємо ID з параметрів URL
+        const recipeId = Number(req.params.id);
         const recipe = await prisma.recipe.update({
-            where: { id: recipeId }, // Використовуємо recipeId тут
-            data: { productId, ingredientId, quantity }, // productId та ingredientId можуть оновлюватись
+            where: { id: recipeId },
+            data: { productId, ingredientId, quantity },
             include: { product: true, ingredient: true }
         });
 
-        // Надсилаємо подію про оновлення
         io.emit('recipe:updated', recipe);
-
         res.json(recipe);
     } catch (err) { next(err); }
 };
 
-
 // Видалити рецепт
 const deleteRecipe = async (req, res, next) => {
     try {
-        const recipeId = Number(req.params.id); // Отримуємо ID з параметрів URL
+        const io = getIO();
+        const recipeId = Number(req.params.id);
 
-        // Знайдемо запис перед видаленням, щоб отримати productId
         const recipeToDelete = await prisma.recipe.findUnique({
             where: { id: recipeId },
-            select: { productId: true } // Вибираємо тільки productId
+            select: { productId: true }
         });
 
-        // Якщо запис не знайдено, повернути 404
-        if (!recipeToDelete) {
-            return res.status(404).json({ error: "Recipe entry not found for deletion" });
-        }
-
+        if (!recipeToDelete) return res.status(404).json({ error: "Recipe entry not found" });
 
         await prisma.recipe.delete({ where: { id: recipeId } });
-
-        // Надсилаємо подію про видалення з ID запису та ID продукту
         io.emit('recipe:deleted', { id: recipeId, productId: recipeToDelete.productId });
 
-        res.status(200).json({ message: "Recipe deleted" }); // Змінено для відповідності HTTP статусу
+        res.status(200).json({ message: "Recipe deleted" });
     } catch (err) {
-        if (err.code === 'P2025') { // Обробка, якщо запис вже видалено
-            return res.status(404).json({ error: "Recipe entry not found for deletion" });
-        }
+        if (err.code === 'P2025') return res.status(404).json({ error: "Recipe entry not found for deletion" });
         next(err);
     }
 };
-
 
 module.exports = { getAllRecipes, getRecipeById, createRecipe, updateRecipe, deleteRecipe };

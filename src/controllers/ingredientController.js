@@ -1,20 +1,11 @@
-const { PrismaClient } = require("@prisma/client");
+const { PrismaClient } = require('@prisma/client');
 const { getIO } = require('../socket');
 
 const prisma = new PrismaClient();
 
-// Отримання екземпляру Socket.IO
-let io;
-try {
-    io = getIO();
-} catch (error) {
-    console.error("Failed to get Socket.IO instance in ingredientController.", error);
-    io = { emit: () => console.warn("Socket.IO not ready in ingredientController.") };
-}
-
-// --- GET ALL INGREDIENTS ---
 const getAllIngredients = async (req, res, next) => {
     try {
+        const io = getIO();
         const { page = 1, limit = 10, search, sortBy = 'name', order = 'asc' } = req.query;
         const skip = (parseInt(page) - 1) * parseInt(limit);
 
@@ -23,8 +14,7 @@ const getAllIngredients = async (req, res, next) => {
 
         const validSortFields = ['id', 'name'];
         const safeSortBy = validSortFields.includes(sortBy) ? sortBy : 'name';
-        const orderBy = {};
-        orderBy[safeSortBy] = order;
+        const orderBy = { [safeSortBy]: order };
 
         const [ingredients, total] = await Promise.all([
             prisma.ingredient.findMany({
@@ -48,20 +38,10 @@ const getAllIngredients = async (req, res, next) => {
             }))
         }));
 
-        res.json({
-            data: formatted,
-            pagination: {
-                page: parseInt(page),
-                limit: parseInt(limit),
-                total,
-                totalPages: Math.ceil(total / parseInt(limit)),
-                hasMore: skip + ingredients.length < total
-            }
-        });
+        res.json({ data: formatted, pagination: { page: parseInt(page), limit: parseInt(limit), total, totalPages: Math.ceil(total / parseInt(limit)), hasMore: skip + ingredients.length < total } });
     } catch (err) { next(err); }
 };
 
-// --- GET INGREDIENT BY ID ---
 const getIngredientById = async (req, res, next) => {
     try {
         const ingredientId = Number(req.params.id);
@@ -69,7 +49,6 @@ const getIngredientById = async (req, res, next) => {
             where: { id: ingredientId },
             include: { recipes: { include: { product: { select: { id: true, name: true, unit: true } } } } }
         });
-
         if (!ingredient) return res.status(404).json({ error: "Ingredient not found" });
 
         const formatted = {
@@ -87,9 +66,9 @@ const getIngredientById = async (req, res, next) => {
     } catch (err) { next(err); }
 };
 
-// --- CREATE INGREDIENT ---
 const createIngredient = async (req, res, next) => {
     try {
+        const io = getIO();
         const { name } = req.body;
         if (!name || name.trim().length < 2) return res.status(400).json({ error: "Ingredient name must be at least 2 characters" });
 
@@ -100,18 +79,16 @@ const createIngredient = async (req, res, next) => {
 
         res.status(201).json(ingredient);
     } catch (err) {
-        if (err.code === 'P2002' && err.meta?.target?.includes('name')) {
-            return res.status(409).json({ error: "Ingredient with this name already exists" });
-        }
+        if (err.code === 'P2002' && err.meta?.target?.includes('name')) return res.status(409).json({ error: "Ingredient with this name already exists" });
         next(err);
     }
 };
 
-// --- UPDATE INGREDIENT ---
 const updateIngredient = async (req, res, next) => {
     try {
-        const { name } = req.body;
+        const io = getIO();
         const ingredientId = Number(req.params.id);
+        const { name } = req.body;
         if (!name || name.trim().length < 2) return res.status(400).json({ error: "Ingredient name must be at least 2 characters" });
 
         const existing = await prisma.ingredient.findUnique({ where: { id: ingredientId } });
@@ -124,16 +101,14 @@ const updateIngredient = async (req, res, next) => {
 
         res.json(ingredient);
     } catch (err) {
-        if (err.code === 'P2002' && err.meta?.target?.includes('name')) {
-            return res.status(409).json({ error: "Another ingredient with this name already exists" });
-        }
+        if (err.code === 'P2002' && err.meta?.target?.includes('name')) return res.status(409).json({ error: "Another ingredient with this name already exists" });
         next(err);
     }
 };
 
-// --- DELETE INGREDIENT ---
 const deleteIngredient = async (req, res, next) => {
     try {
+        const io = getIO();
         const ingredientId = Number(req.params.id);
         const existing = await prisma.ingredient.findUnique({ where: { id: ingredientId } });
         if (!existing) return res.status(404).json({ error: "Ingredient not found for deletion" });
@@ -151,10 +126,4 @@ const deleteIngredient = async (req, res, next) => {
     }
 };
 
-module.exports = {
-    getAllIngredients,
-    getIngredientById,
-    createIngredient,
-    updateIngredient,
-    deleteIngredient
-};
+module.exports = { getAllIngredients, getIngredientById, createIngredient, updateIngredient, deleteIngredient };
