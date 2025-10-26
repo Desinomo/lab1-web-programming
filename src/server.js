@@ -8,7 +8,22 @@ const swaggerUi = require("swagger-ui-express");
 const swaggerSpecs = require("./config/swagger");
 const http = require('http');
 const { initSocket } = require('./socket');
+const { setIO: setOrderIO } = require('./controllers/orderController');
+const { setIO: setProductIO } = require('./controllers/productController');
+const { setIO: setCustomerIO } = require('./controllers/customerController');
+const { setIO: setAuthIO } = require('./controllers/authController');
+const { setIO: setFileIO } = require('./controllers/fileController');
+const { setIO: setIngredientIO } = require('./controllers/ingredientController');
+const { setIO: setRecipeIO } = require('./controllers/recipeController');
 
+// Встановлюємо io
+setOrderIO(io);
+setProductIO(io);
+setCustomerIO(io);
+setAuthIO(io);
+setFileIO(io);
+setIngredientIO(io);
+setRecipeIO(io);
 // Роути
 const userRoutes = require("./routes/userRoutes");
 const customerRoutes = require("./routes/customerRoutes");
