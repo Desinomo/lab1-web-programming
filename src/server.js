@@ -1,3 +1,4 @@
+// server.js
 const express = require("express");
 const dotenv = require("dotenv");
 const helmet = require("helmet");
@@ -8,16 +9,7 @@ const swaggerSpecs = require("./config/swagger");
 const http = require('http');
 const { initSocket } = require('./socket');
 
-// Контролери для встановлення Socket.IO
-const { setIO: setOrderIO } = require('./controllers/orderController');
-const { setIO: setProductIO } = require('./controllers/productController');
-const { setIO: setCustomerIO } = require('./controllers/customerController');
-const { setIO: setAuthIO } = require('./controllers/authController');
-const { setIO: setFileIO } = require('./controllers/fileController');
-const { setIO: setIngredientIO } = require('./controllers/ingredientController');
-const { setIO: setRecipeIO } = require('./controllers/recipeController');
-
-// Роутери
+// Роути
 const userRoutes = require("./routes/userRoutes");
 const customerRoutes = require("./routes/customerRoutes");
 const productRoutes = require("./routes/productRoutes");
@@ -30,16 +22,7 @@ dotenv.config();
 
 const app = express();
 const server = http.createServer(app);
-const io = initSocket(server); // <-- Спочатку створюємо Socket.IO
-
-// Передаємо io у контролери
-setOrderIO(io);
-setProductIO(io);
-setCustomerIO(io);
-setAuthIO(io);
-setFileIO(io);
-setIngredientIO(io);
-setRecipeIO(io);
+const io = initSocket(server); // Socket.IO
 
 // Middleware
 app.use(helmet());
@@ -50,7 +33,6 @@ app.use(cors({
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
-// Лімітер запитів
 const limiter = rateLimit({
     windowMs: 15 * 60 * 1000,
     max: 100,
@@ -64,7 +46,7 @@ app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerSpecs, {
     customCss: '.swagger-ui .topbar { display: none }'
 }));
 
-// Роутери
+// Роути
 app.use("/api/auth", userRoutes);
 app.use("/api/customers", customerRoutes);
 app.use("/api/products", productRoutes);
@@ -85,8 +67,8 @@ app.use((err, req, res, next) => {
     res.status(err.status || 500).json({ error: err.message || 'Внутрішня помилка сервера' });
 });
 
-// Запуск сервера
-const PORT = process.env.PORT || 3000;
+// --- Запуск сервера ---
+const PORT = process.env.PORT || 3000; // Render підставить свій порт через process.env.PORT
 server.listen(PORT, () => {
     console.log(`Сервер запущено на порту ${PORT}`);
     console.log(`Документація API: http://localhost:${PORT}/api-docs`);
