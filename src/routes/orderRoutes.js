@@ -5,7 +5,6 @@ const { authenticateToken, requireRole } = require("../middleware/auth");
 
 const router = express.Router();
 
-// Додамо базову валідацію для створення замовлення
 const orderValidation = [
     body("customerId").isInt({ gt: 0 }).withMessage("Customer ID must be a positive integer"),
     body("totalPrice").isFloat({ gt: 0 }).withMessage("Total price must be a positive number"),
@@ -18,30 +17,122 @@ const validate = (req, res, next) => {
     next();
 };
 
-// Публічні маршрути для перегляду
+/**
+ * @swagger
+ * tags:
+ *   name: Orders
+ *   description: Order management
+ */
+
+/**
+ * @swagger
+ * /api/orders:
+ *   get:
+ *     summary: Get all orders
+ *     tags: [Orders]
+ *     responses:
+ *       200:
+ *         description: List of all orders
+ */
 router.get("/", getAllOrders);
+
+/**
+ * @swagger
+ * /api/orders/{id}:
+ *   get:
+ *     summary: Get order by ID
+ *     tags: [Orders]
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: integer
+ *     responses:
+ *       200:
+ *         description: Order found
+ *       404:
+ *         description: Order not found
+ */
 router.get("/:id", getOrderById);
 
-// ✅ ЗМІНЕНО: Створювати та оновлювати тепер можуть АДМІНИ та МОДЕРАТОРИ
-router.post("/",
-    authenticateToken,
-    requireRole("ADMIN", "MODERATOR"), // <-- Додано роль MODERATOR
-    orderValidation,
-    validate,
-    createOrder
-);
+/**
+ * @swagger
+ * /api/orders:
+ *   post:
+ *     summary: Create new order
+ *     tags: [Orders]
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               customerId:
+ *                 type: integer
+ *               totalPrice:
+ *                 type: number
+ *               details:
+ *                 type: array
+ *                 items:
+ *                   type: object
+ *     responses:
+ *       201:
+ *         description: Order created
+ *       400:
+ *         description: Validation error
+ */
+router.post("/", authenticateToken, requireRole("ADMIN", "MODERATOR"), orderValidation, validate, createOrder);
 
-router.put("/:id",
-    authenticateToken,
-    requireRole("ADMIN", "MODERATOR"), // <-- Додано роль MODERATOR
-    updateOrder
-);
+/**
+ * @swagger
+ * /api/orders/{id}:
+ *   put:
+ *     summary: Update order
+ *     tags: [Orders]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: integer
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *     responses:
+ *       200:
+ *         description: Order updated
+ *       404:
+ *         description: Order not found
+ */
+router.put("/:id", authenticateToken, requireRole("ADMIN", "MODERATOR"), updateOrder);
 
-// ✅ Видалення, як і раніше, доступне ТІЛЬКИ АДМІНАМ
-router.delete("/:id",
-    authenticateToken,
-    requireRole("ADMIN"),
-    deleteOrder
-);
+/**
+ * @swagger
+ * /api/orders/{id}:
+ *   delete:
+ *     summary: Delete order
+ *     tags: [Orders]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *     responses:
+ *       200:
+ *         description: Order deleted
+ *       404:
+ *         description: Order not found
+ */
+router.delete("/:id", authenticateToken, requireRole("ADMIN"), deleteOrder);
 
 module.exports = router;

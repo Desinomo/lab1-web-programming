@@ -17,32 +17,122 @@ const validate = (req, res, next) => {
     next();
 };
 
-// Публічні маршрути для перегляду
+/**
+ * @swagger
+ * tags:
+ *   name: Recipes
+ *   description: Recipe management
+ */
+
+/**
+ * @swagger
+ * /api/recipes:
+ *   get:
+ *     summary: Get all recipes
+ *     tags: [Recipes]
+ *     responses:
+ *       200:
+ *         description: List of all recipes
+ */
 router.get("/", getAllRecipes);
+
+/**
+ * @swagger
+ * /api/recipes/{id}:
+ *   get:
+ *     summary: Get recipe by ID
+ *     tags: [Recipes]
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: integer
+ *     responses:
+ *       200:
+ *         description: Recipe found
+ *       404:
+ *         description: Recipe not found
+ */
 router.get("/:id", getRecipeById);
 
-// ✅ ЗМІНЕНО: Створювати та оновлювати тепер можуть АДМІНИ та МОДЕРАТОРИ
-router.post("/",
-    authenticateToken,
-    requireRole("ADMIN", "MODERATOR"), // <-- Додано роль MODERATOR
-    recipeValidation,
-    validate,
-    createRecipe
-);
+/**
+ * @swagger
+ * /api/recipes:
+ *   post:
+ *     summary: Create new recipe
+ *     tags: [Recipes]
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               productId:
+ *                 type: integer
+ *               ingredientId:
+ *                 type: integer
+ *               quantity:
+ *                 type: number
+ *     responses:
+ *       201:
+ *         description: Recipe created
+ *       400:
+ *         description: Validation error
+ */
+router.post("/", authenticateToken, requireRole("ADMIN", "MODERATOR"), recipeValidation, validate, createRecipe);
 
-router.put("/:id",
-    authenticateToken,
-    requireRole("ADMIN", "MODERATOR"), // <-- Додано роль MODERATOR
-    recipeValidation,
-    validate,
-    updateRecipe
-);
+/**
+ * @swagger
+ * /api/recipes/{id}:
+ *   put:
+ *     summary: Update recipe
+ *     tags: [Recipes]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: integer
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *     responses:
+ *       200:
+ *         description: Recipe updated
+ *       404:
+ *         description: Recipe not found
+ */
+router.put("/:id", authenticateToken, requireRole("ADMIN", "MODERATOR"), recipeValidation, validate, updateRecipe);
 
-// ✅ Видалення, як і раніше, доступне ТІЛЬКИ АДМІНАМ
-router.delete("/:id",
-    authenticateToken,
-    requireRole("ADMIN"),
-    deleteRecipe
-);
+/**
+ * @swagger
+ * /api/recipes/{id}:
+ *   delete:
+ *     summary: Delete recipe
+ *     tags: [Recipes]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: integer
+ *     responses:
+ *       200:
+ *         description: Recipe deleted
+ *       404:
+ *         description: Recipe not found
+ */
+router.delete("/:id", authenticateToken, requireRole("ADMIN"), deleteRecipe);
 
 module.exports = router;
