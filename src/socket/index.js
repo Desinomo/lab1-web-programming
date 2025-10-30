@@ -26,33 +26,33 @@ function initSocket(httpServer) {
     io.use(async (socket, next) => {
         try {
             const token = socket.handshake.auth.token;
-            if (!token) {
-                return next(new Error('Authentication error: Token not provided'));
-            }
+            if (!token) return next(new Error('Token not provided'));
 
             const decoded = jwt.verify(token, process.env.JWT_SECRET);
+            console.log('Decoded JWT:', decoded); // <- тут
+
             const user = await prisma.user.findUnique({
                 where: { id: decoded.userId },
                 select: { id: true, role: true }
             });
 
-            if (!user) {
-                return next(new Error('Authentication error: User not found'));
-            }
+            console.log('Fetched user from DB:', user); // <- і тут
+            if (!user) return next(new Error('User not found'));
 
-            socket.user = user; // Зберігаємо користувача в сокеті
-            next(); // Дозволяємо підключення
-
+            socket.user = user;
+            next();
         } catch (err) {
-            console.error("Socket auth error:", err.message);
-            next(new Error('Authentication error: Invalid token'));
+            console.error(err);
+            next(new Error('Authentication error'));
         }
     });
+
 
     // Обробка нових підключень
     io.on('connection', (socket) => {
         console.log(`A user connected: ${socket.id}, Role: ${socket.user.role}`);
-
+        console.log(`✅ Connected: ${socket.id}, User ID: ${socket.user.id}, Role: ${socket.user.role}`);
+        console.log(`Rooms for this socket:`, Array.from(socket.rooms));
         // --- 3. СИСТЕМА КІМНАТ (Рівень 1) ---
         // Автоматично приєднуємо до кімнати на основі ролі
         socket.join(socket.user.role); // Напр. 'ADMIN', 'MODERATOR', 'USER'

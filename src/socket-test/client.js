@@ -2,7 +2,7 @@
 
 // --- 🛑 ВАЖЛИВО: Вставте сюди ваш токен! ---
 // Отримайте його зі Swagger (login)
-const YOUR_JWT_TOKEN = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VySWQiOjIsInJvbGUiOiJVU0VSIiwiaWF0IjoxNzYxODM2OTk3LCJleHAiOjE3NjI0NDE3OTd9.aj2T9RIMHy-vi16P0RgaAlqvhEtR4Bqv_uIaUnkZGqo";
+const YOUR_JWT_TOKEN = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VySWQiOjIsInJvbGUiOiJVU0VSIiwiaWF0IjoxNzYxODM4MDA2LCJleHAiOjE3NjI0NDI4MDZ9.OcPCvXwyUTuhVHp2l5bC2WChMrzWcqxXnpLISS5evH8";
 
 const socket = io("https://lab1-web-programming.onrender.com", {
     // Надсилаємо наш токен для автентифікації
