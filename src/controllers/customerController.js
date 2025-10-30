@@ -1,3 +1,4 @@
+﻿// controllers/customerController.js
 const { PrismaClient } = require('@prisma/client');
 const { getIO } = require('../socket');
 const Joi = require('joi');
@@ -11,7 +12,7 @@ const customerSchema = Joi.object({
 
 const getAllCustomers = async (req, res, next) => {
     try {
-        const io = getIO();
+        // 👈 ВИПРАВЛЕНО: 'io' тут не потрібен
         const { page = 1, limit = 10, search, sortBy = 'createdAt', order = 'desc' } = req.query;
         const skip = (parseInt(page) - 1) * parseInt(limit);
 
@@ -55,15 +56,16 @@ const getCustomerById = async (req, res, next) => {
 
 const createCustomer = async (req, res, next) => {
     try {
-        const io = getIO();
+        const io = getIO(); // 👈 ВИПРАВЛЕНО: Виклик всередині
         const { error } = customerSchema.validate(req.body);
         if (error) return res.status(400).json({ error: error.details[0].message });
 
         const { firstName, lastName, email } = req.body;
         const customer = await prisma.customer.create({ data: { firstName, lastName, email } });
 
-        io.emit('customer:created', customer);
-        io.emit('notification:new', { type: 'info', message: `New customer created: ${customer.firstName} ${customer.lastName}`, customerId: customer.id });
+        io.emit('customer:created', customer); // Глобальна подія для всіх
+        // Сповіщення тільки для адмінів/модераторів
+        io.to('ADMIN').to('MODERATOR').emit('notification:new', { type: 'info', message: `New customer created: ${customer.firstName} ${customer.lastName}`, customerId: customer.id });
 
         res.status(201).json(customer);
     } catch (err) {
@@ -74,7 +76,7 @@ const createCustomer = async (req, res, next) => {
 
 const updateCustomer = async (req, res, next) => {
     try {
-        const io = getIO();
+        const io = getIO(); // 👈 ВИПРАВЛЕНО: Виклик всередині
         const { error } = customerSchema.validate(req.body);
         if (error) return res.status(400).json({ error: error.details[0].message });
 
@@ -85,8 +87,8 @@ const updateCustomer = async (req, res, next) => {
         const { firstName, lastName, email } = req.body;
         const customer = await prisma.customer.update({ where: { id: customerId }, data: { firstName, lastName, email } });
 
-        io.emit('customer:updated', customer);
-        io.emit('notification:new', { type: 'success', message: `Customer ${customer.firstName} ${customer.lastName} updated`, customerId: customer.id });
+        io.emit('customer:updated', customer); // Глобальна подія для всіх
+        io.to('ADMIN').to('MODERATOR').emit('notification:new', { type: 'success', message: `Customer ${customer.firstName} ${customer.lastName} updated`, customerId: customer.id });
 
         res.json(customer);
     } catch (err) {
@@ -97,7 +99,7 @@ const updateCustomer = async (req, res, next) => {
 
 const deleteCustomer = async (req, res, next) => {
     try {
-        const io = getIO();
+        const io = getIO(); // 👈 ВИПРАВЛЕНО: Виклик всередині
         const customerId = Number(req.params.id);
         const existingCustomer = await prisma.customer.findUnique({ where: { id: customerId } });
         if (!existingCustomer) return res.status(404).json({ error: "Customer not found" });
@@ -107,7 +109,7 @@ const deleteCustomer = async (req, res, next) => {
 
         await prisma.customer.delete({ where: { id: customerId } });
 
-        io.emit('customer:deleted', { id: customerId });
+        io.emit('customer:deleted', { id: customerId }); // Глобальна подія для всіх
         res.status(200).json({ message: "Customer deleted" });
     } catch (err) { next(err); }
 };

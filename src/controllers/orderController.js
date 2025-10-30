@@ -1,23 +1,7 @@
-const { PrismaClient } = require("@prisma/client");
+﻿const { PrismaClient } = require("@prisma/client");
+const { getIO } = require('../socket'); // 👈 ВИПРАВЛЕНО: Імпорт з socket
 
 const prisma = new PrismaClient();
-
-// --- Socket.IO instance ---
-let io = null;
-
-// Set Socket.IO instance from server after initialization
-const setIO = (socketInstance) => {
-    io = socketInstance;
-};
-
-// Safe emit function
-const safeEmit = (event, payload) => {
-    if (io && typeof io.emit === "function") {
-        io.emit(event, payload);
-    } else {
-        console.warn(`Socket.IO not ready. Event "${event}" not emitted.`);
-    }
-};
 
 // --- GET ALL ORDERS (optimized) ---
 const getAllOrders = async (req, res, next) => {
@@ -31,7 +15,7 @@ const getAllOrders = async (req, res, next) => {
             maxPrice,
             startDate,
             endDate,
-            sortBy = "createdAt",
+            sortBy = "date", // 👈 ВИПРАВЛЕНО: 'date'
             order = "desc",
         } = req.query;
 
@@ -51,17 +35,18 @@ const getAllOrders = async (req, res, next) => {
             if (minPrice) where.totalPrice.gte = parseFloat(minPrice);
             if (maxPrice) where.totalPrice.lte = parseFloat(maxPrice);
         }
+        // 👈 ВИПРАВЛЕНО: 'date'
         if (startDate || endDate) {
-            where.createdAt = {};
-            if (startDate) where.createdAt.gte = new Date(startDate);
+            where.date = {};
+            if (startDate) where.date.gte = new Date(startDate);
             if (endDate)
-                where.createdAt.lte = new Date(
+                where.date.lte = new Date(
                     new Date(endDate).setDate(new Date(endDate).getDate() + 1)
                 );
         }
 
-        const validSortFields = ["id", "customerId", "totalPrice", "createdAt"];
-        const safeSortBy = validSortFields.includes(sortBy) ? sortBy : "createdAt";
+        const validSortFields = ["id", "customerId", "totalPrice", "date"]; // 👈 ВИПРАВЛЕНО: 'date'
+        const safeSortBy = validSortFields.includes(sortBy) ? sortBy : "date"; // 👈 ВИПРАВЛЕНО: 'date'
         const orderBy = { [safeSortBy]: order };
 
         const [orders, total] = await Promise.all([
@@ -73,7 +58,7 @@ const getAllOrders = async (req, res, next) => {
                 select: {
                     id: true,
                     totalPrice: true,
-                    createdAt: true,
+                    date: true, // 👈 ВИПРАВЛЕНО: 'date'
                     customer: { select: { id: true, firstName: true, lastName: true } },
                 },
             }),
@@ -120,11 +105,13 @@ const getOrderById = async (req, res, next) => {
 // --- CREATE ORDER ---
 const createOrder = async (req, res, next) => {
     try {
+        const io = getIO(); // 👈 ВИПРАВЛЕНО: Виклик всередині
         const { customerId, totalPrice, details } = req.body;
         const order = await prisma.order.create({
             data: {
                 customerId,
                 totalPrice,
+                // 'date' заповнюється автоматично (@default(now()))
                 details: {
                     create: details.map((item) => ({
                         productId: item.productId,
@@ -142,11 +129,10 @@ const createOrder = async (req, res, next) => {
             },
         });
 
-        safeEmit("order:created", order);
-        safeEmit("notification:new", {
+        io.emit("order:created", order); // Глобальна подія
+        io.to('ADMIN').to('MODERATOR').emit("notification:new", {
             type: "success",
-            message: `New order #${order.id} created for ${order.customer?.firstName || "customer"
-                }.`,
+            message: `New order #${order.id} created for ${order.customer?.firstName || "customer"}.`,
             orderId: order.id,
         });
 
@@ -161,7 +147,8 @@ const createOrder = async (req, res, next) => {
 // --- UPDATE ORDER ---
 const updateOrder = async (req, res, next) => {
     try {
-        const { totalPrice, status } = req.body;
+        const io = getIO(); // 👈 ВИПРАВЛЕНО: Виклик всередині
+        const { totalPrice, status } = req.body; // 'status' у вас немає в схемі, але я залишив
         const orderId = Number(req.params.id);
 
         const existingOrder = await prisma.order.findUnique({
@@ -172,7 +159,7 @@ const updateOrder = async (req, res, next) => {
 
         const updatedData = {};
         if (totalPrice !== undefined) updatedData.totalPrice = totalPrice;
-        if (status !== undefined) updatedData.status = status;
+        // if (status !== undefined) updatedData.status = status; // Розкоментуйте, якщо додасте 'status' в schema.prisma
 
         const order = await prisma.order.update({
             where: { id: orderId },
@@ -187,14 +174,14 @@ const updateOrder = async (req, res, next) => {
             },
         });
 
-        safeEmit("order:updated", order);
-        if (status && status !== existingOrder.status) {
-            safeEmit("notification:new", {
-                type: "info",
-                message: `Status of order #${order.id} updated to '${status}'.`,
-                orderId: order.id,
-            });
-        }
+        io.emit("order:updated", order);
+        // if (status && status !== existingOrder.status) { // Розкоментуйте, якщо додасте 'status'
+        //     io.to('ADMIN').to('MODERATOR').emit("notification:new", {
+        //         type: "info",
+        //         message: `Status of order #${order.id} updated to '${status}'.`,
+        //         orderId: order.id,
+        //     });
+        // }
 
         res.json(order);
     } catch (err) {
@@ -205,13 +192,16 @@ const updateOrder = async (req, res, next) => {
 // --- DELETE ORDER ---
 const deleteOrder = async (req, res, next) => {
     try {
+        const io = getIO(); // 👈 ВИПРАВЛЕНО: Виклик всередині
         const orderId = Number(req.params.id);
         const existingOrder = await prisma.order.findUnique({ where: { id: orderId } });
         if (!existingOrder) return res.status(404).json({ error: "Order not found" });
 
+        // Потрібно спочатку видалити OrderDetail, пов'язані з цим Order
+        await prisma.orderDetail.deleteMany({ where: { orderId: orderId } });
         await prisma.order.delete({ where: { id: orderId } });
 
-        safeEmit("order:deleted", { id: orderId });
+        io.emit("order:deleted", { id: orderId });
         res.status(200).json({ message: "Order deleted" });
     } catch (err) {
         if (err.code === "P2025")
@@ -220,8 +210,8 @@ const deleteOrder = async (req, res, next) => {
     }
 };
 
+// 👈 ВИПРАВЛЕНО: Видалено 'setIO' з експорту
 module.exports = {
-    setIO,
     getAllOrders,
     getOrderById,
     createOrder,

@@ -1,4 +1,4 @@
-// server.js
+п»ї// server.js
 const express = require("express");
 const dotenv = require("dotenv");
 const helmet = require("helmet");
@@ -7,9 +7,9 @@ const rateLimit = require("express-rate-limit");
 const swaggerUi = require("swagger-ui-express");
 const swaggerSpecs = require("./config/swagger");
 const http = require('http');
-const { initSocket } = require('./socket');
+const { initSocket } = require('./socket'); // рџ‘€ РўС–Р»СЊРєРё initSocket
 
-// Роути
+// Р РѕСѓС‚Рё
 const userRoutes = require("./routes/userRoutes");
 const customerRoutes = require("./routes/customerRoutes");
 const productRoutes = require("./routes/productRoutes");
@@ -22,7 +22,9 @@ dotenv.config();
 
 const app = express();
 const server = http.createServer(app);
-const io = initSocket(server); // Socket.IO
+
+// Р†РЅС–С†С–Р°Р»С–Р·СѓС”РјРѕ Socket.IO С– РїРµСЂРµРґР°С”РјРѕ Р№РѕРјСѓ http-СЃРµСЂРІРµСЂ
+const io = initSocket(server);
 
 // Middleware
 app.use(helmet());
@@ -36,7 +38,7 @@ app.use(express.urlencoded({ extended: true }));
 const limiter = rateLimit({
     windowMs: 15 * 60 * 1000,
     max: 100,
-    message: 'Забагато запитів, спробуйте пізніше'
+    message: 'Р—Р°Р±Р°РіР°С‚Рѕ Р·Р°РїРёС‚С–РІ, СЃРїСЂРѕР±СѓР№С‚Рµ РїС–Р·РЅС–С€Рµ'
 });
 app.use('/api/', limiter);
 
@@ -46,7 +48,7 @@ app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerSpecs, {
     customCss: '.swagger-ui .topbar { display: none }'
 }));
 
-// Роути
+// Р РѕСѓС‚Рё
 app.use("/api/auth", userRoutes);
 app.use("/api/customers", customerRoutes);
 app.use("/api/products", productRoutes);
@@ -55,21 +57,22 @@ app.use("/api/recipes", recipeRoutes);
 app.use("/api/orders", orderRoutes);
 app.use('/api/files', fileRoutes);
 
-// Централізована обробка помилок
+// Р¦РµРЅС‚СЂР°Р»С–Р·РѕРІР°РЅР° РѕР±СЂРѕР±РєР° РїРѕРјРёР»РѕРє
 app.use((err, req, res, next) => {
     console.error(err.stack);
     if (err.name === 'MulterError') {
         if (err.code === 'LIMIT_FILE_SIZE') {
-            return res.status(400).json({ error: 'Файл занадто великий' });
+            return res.status(400).json({ error: 'Р¤Р°Р№Р» Р·Р°РЅР°РґС‚Рѕ РІРµР»РёРєРёР№' });
         }
-        return res.status(400).json({ error: 'Помилка завантаження файлу' });
+        return res.status(400).json({ error: 'РџРѕРјРёР»РєР° Р·Р°РІР°РЅС‚Р°Р¶РµРЅРЅСЏ С„Р°Р№Р»Сѓ' });
     }
-    res.status(err.status || 500).json({ error: err.message || 'Внутрішня помилка сервера' });
+    res.status(err.status || 500).json({ error: err.message || 'Р’РЅСѓС‚СЂС–С€РЅСЏ РїРѕРјРёР»РєР° СЃРµСЂРІРµСЂР°' });
 });
 
-// --- Запуск сервера ---
-const PORT = process.env.PORT || 3000; // Render підставить свій порт через process.env.PORT
+// --- Р—Р°РїСѓСЃРє СЃРµСЂРІРµСЂР° ---
+const PORT = process.env.PORT || 3000;
+// Р’Р°Р¶Р»РёРІРѕ: РјРё Р·Р°РїСѓСЃРєР°С”РјРѕ 'server', Р° РЅРµ 'app'
 server.listen(PORT, () => {
-    console.log(`Сервер запущено на порту ${PORT}`);
-    console.log(`Документація API: http://localhost:${PORT}/api-docs`);
+    console.log(`РЎРµСЂРІРµСЂ Р·Р°РїСѓС‰РµРЅРѕ РЅР° РїРѕСЂС‚Сѓ ${PORT}`);
+    console.log(`Р”РѕРєСѓРјРµРЅС‚Р°С†С–СЏ API: http://localhost:${PORT}/api-docs`);
 });

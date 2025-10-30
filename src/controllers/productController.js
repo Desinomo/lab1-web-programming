@@ -1,17 +1,8 @@
-const { PrismaClient } = require("@prisma/client");
+﻿const { PrismaClient } = require("@prisma/client");
 const Joi = require("joi");
+const { getIO } = require('../socket'); // 👈 ВИПРАВЛЕНО: Імпорт з socket
 
 const prisma = new PrismaClient();
-
-// --- Socket.IO ---
-let io;
-const setIO = (socketInstance) => {
-    io = socketInstance;
-};
-const getIO = () => {
-    if (!io) throw new Error("Socket.IO not initialized!");
-    return io;
-};
 
 // --- Validation schema ---
 const productSchema = Joi.object({
@@ -110,6 +101,7 @@ const getProductById = async (req, res, next) => {
 // --- CREATE product ---
 const createProduct = async (req, res, next) => {
     try {
+        const io = getIO(); // 👈 ВИПРАВЛЕНО: Виклик всередині
         const { error, value } = productSchema.validate(req.body);
         if (error) return res.status(400).json({ error: error.details[0].message });
 
@@ -125,8 +117,9 @@ const createProduct = async (req, res, next) => {
             }
         });
 
-        getIO().emit('product:created', product);
-        getIO().emit('notification:new', { type: 'success', message: `New product added: ${product.name}`, productId: product.id });
+        io.emit('product:created', product); // Глобальна подія
+        // РІВЕНЬ 1 (КІМНАТИ): Сповіщення тільки для адмінів/модераторів
+        io.to('ADMIN').to('MODERATOR').emit('notification:new', { type: 'success', message: `New product added: ${product.name}`, productId: product.id });
 
         res.status(201).json(product);
     } catch (err) {
@@ -140,6 +133,7 @@ const createProduct = async (req, res, next) => {
 // --- UPDATE product ---
 const updateProduct = async (req, res, next) => {
     try {
+        const io = getIO(); // 👈 ВИПРАВЛЕНО: Виклик всередині
         const productId = Number(req.params.id);
         const { error, value } = productSchema.validate(req.body);
         if (error) return res.status(400).json({ error: error.details[0].message });
@@ -160,8 +154,8 @@ const updateProduct = async (req, res, next) => {
             }
         });
 
-        getIO().emit('product:updated', product);
-        getIO().emit('notification:new', { type: 'info', message: `Product updated: ${product.name}`, productId: product.id });
+        io.emit('product:updated', product); // Глобальна подія
+        io.to('ADMIN').to('MODERATOR').emit('notification:new', { type: 'info', message: `Product updated: ${product.name}`, productId: product.id });
 
         res.json(product);
     } catch (err) {
@@ -175,14 +169,15 @@ const updateProduct = async (req, res, next) => {
 // --- DELETE product ---
 const deleteProduct = async (req, res, next) => {
     try {
+        const io = getIO(); // 👈 ВИПРАВЛЕНО: Виклик всередині
         const productId = Number(req.params.id);
         const existingProduct = await prisma.product.findUnique({ where: { id: productId } });
         if (!existingProduct) return res.status(404).json({ error: "Product not found for deletion" });
 
         await prisma.product.delete({ where: { id: productId } });
 
-        getIO().emit('product:deleted', { id: productId });
-        getIO().emit('notification:new', { type: 'warning', message: `Product deleted: ${existingProduct.name}`, productId });
+        io.emit('product:deleted', { id: productId }); // Глобальна подія
+        io.to('ADMIN').to('MODERATOR').emit('notification:new', { type: 'warning', message: `Product deleted: ${existingProduct.name}`, productId });
 
         res.status(200).json({ message: "Product deleted" });
     } catch (err) {
@@ -192,9 +187,8 @@ const deleteProduct = async (req, res, next) => {
     }
 };
 
+// 👈 ВИПРАВЛЕНО: Видалено 'setIO' та 'getIO' з експорту
 module.exports = {
-    setIO,
-    getIO,
     getAllProducts,
     getProductById,
     createProduct,

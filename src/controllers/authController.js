@@ -1,3 +1,4 @@
+﻿// controllers/authController.js
 const { PrismaClient } = require('@prisma/client');
 const { hashPassword, comparePassword } = require('../utils/password');
 const { generateAccessToken, generateRefreshToken, verifyRefreshToken } = require('../utils/jwt');
@@ -9,7 +10,7 @@ const prisma = new PrismaClient();
 
 async function register(req, res, next) {
     try {
-        const io = getIO();
+        const io = getIO(); // 👈 ВИПРАВЛЕНО: Виклик всередині функції
         const { email, password, name } = req.body;
 
         if (!email || !password || !name) return res.status(400).json({ error: 'Email, password, and name are required' });
@@ -27,6 +28,7 @@ async function register(req, res, next) {
         const accessToken = generateAccessToken(user.id, user.role);
         const refreshToken = generateRefreshToken(user.id);
 
+        // Ця подія має бути глобальною, щоб усі адміни бачили нового користувача
         io.emit('user:registered', { id: user.id, email: user.email, name: user.name, role: user.role });
 
         res.status(201).json({ message: 'User registered successfully', user, tokens: { accessToken, refreshToken } });
@@ -38,7 +40,7 @@ async function register(req, res, next) {
 
 async function login(req, res, next) {
     try {
-        const io = getIO();
+        const io = getIO(); // 👈 ВИПРАВЛЕНО: Виклик всередині функції
         const { email, password } = req.body;
         if (!email || !password) return res.status(400).json({ error: 'Email and password are required' });
 
@@ -52,7 +54,9 @@ async function login(req, res, next) {
         const refreshToken = generateRefreshToken(user.id);
 
         const { password: _, ...userWithoutPassword } = user;
-        io.emit('user:loggedin', { userId: user.id, email: user.email, name: user.name, role: user.role });
+
+        // Повідомляємо адмінів, що хтось залогінився
+        io.to('ADMIN').emit('user:loggedin', { userId: user.id, email: user.email, name: user.name, role: user.role });
 
         res.json({ message: 'Login successful', user: userWithoutPassword, tokens: { accessToken, refreshToken } });
     } catch (error) {
@@ -80,7 +84,7 @@ async function refreshToken(req, res, next) {
 
 const getAllUsers = async (req, res, next) => {
     try {
-        const io = getIO();
+        // 👈 ВИПРАВЛЕНО: 'io' тут не потрібен, тому видалено
         const { page = 1, limit = 10, search, role, sortBy = 'id', order = 'asc' } = req.query;
         const skip = (parseInt(page) - 1) * parseInt(limit);
 
@@ -103,7 +107,7 @@ const getAllUsers = async (req, res, next) => {
 
 async function changePassword(req, res, next) {
     try {
-        const io = getIO();
+        // 👈 'io' тут не потрібен для зміни пароля
         const userId = req.user.userId;
         const { currentPassword, newPassword } = req.body;
 
@@ -126,7 +130,7 @@ async function changePassword(req, res, next) {
 
 async function forgotPassword(req, res, next) {
     try {
-        const io = getIO();
+        // 👈 'io' тут не потрібен
         const { email } = req.body;
         if (!email) return res.status(400).json({ error: 'Email is required' });
 
@@ -135,7 +139,7 @@ async function forgotPassword(req, res, next) {
 
         const resetToken = crypto.randomBytes(32).toString('hex');
         const passwordResetToken = crypto.createHash('sha256').update(resetToken).digest('hex');
-        const passwordResetExpires = new Date(Date.now() + 10 * 60 * 1000);
+        const passwordResetExpires = new Date(Date.now() + 10 * 60 * 1000); // 10 хвилин
 
         await prisma.user.update({ where: { email: user.email }, data: { passwordResetToken, passwordResetExpires } });
 
@@ -154,7 +158,7 @@ async function forgotPassword(req, res, next) {
 
 async function resetPassword(req, res, next) {
     try {
-        const io = getIO();
+        // 👈 'io' тут не потрібен
         const { token } = req.params;
         const { password } = req.body;
         if (!password || password.length < 8) return res.status(400).json({ error: 'Password must be at least 8 characters long' });
