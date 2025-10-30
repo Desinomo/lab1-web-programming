@@ -1,16 +1,19 @@
-// socket/index.js
+п»ї// socket/index.js
 const { Server } = require("socket.io");
 const jwt = require('jsonwebtoken');
-const { PrismaClient } = require('@prisma/client'); // Потрібно для перевірки користувача
+const { PrismaClient } = require('@prisma/client'); // РџРѕС‚СЂС–Р±РЅРѕ РґР»СЏ РїРµСЂРµРІС–СЂРєРё РєРѕСЂРёСЃС‚СѓРІР°С‡Р°
 
 const prisma = new PrismaClient();
-let io; // Змінна для зберігання екземпляру Socket.IO сервера
+let io; // Р—РјС–РЅРЅР° РґР»СЏ Р·Р±РµСЂС–РіР°РЅРЅСЏ РµРєР·РµРјРїР»СЏСЂСѓ Socket.IO СЃРµСЂРІРµСЂР°
 
-// Функція для ініціалізації Socket.IO
+// Р¤СѓРЅРєС†С–СЏ РґР»СЏ С–РЅС–С†С–Р°Р»С–Р·Р°С†С–С— Socket.IO
 function initSocket(httpServer) {
     io = new Server(httpServer, {
         cors: {
-            origin: process.env.FRONTEND_URL || "http://localhost:5173",
+            origin: [
+                process.env.FRONTEND_URL || "http://localhost:5173",
+                "https://admin.socket.io" // рџ‘€ Р”РѕРґР°Р№С‚Рµ С†РµР№ СЂСЏРґРѕРє
+            ],
             methods: ["GET", "POST"],
             credentials: true
         }
@@ -18,21 +21,21 @@ function initSocket(httpServer) {
 
     console.log("Socket.IO initialized");
 
-    // --- АВТЕНТИФІКАЦІЯ СОКЕТА (Рівень 2, але потрібен для кімнат) ---
-    // Це middleware, яке запускається для *кожного* нового сокет-з'єднання
+    // --- РђР’РўР•РќРўРР¤Р†РљРђР¦Р†РЇ РЎРћРљР•РўРђ (Р С–РІРµРЅСЊ 2, Р°Р»Рµ РїРѕС‚СЂС–Р±РµРЅ РґР»СЏ РєС–РјРЅР°С‚) ---
+    // Р¦Рµ middleware, СЏРєРµ Р·Р°РїСѓСЃРєР°С”С‚СЊСЃСЏ РґР»СЏ *РєРѕР¶РЅРѕРіРѕ* РЅРѕРІРѕРіРѕ СЃРѕРєРµС‚-Р·'С”РґРЅР°РЅРЅСЏ
     io.use(async (socket, next) => {
         try {
-            // Клієнт має надіслати токен при підключенні
+            // РљР»С–С”РЅС‚ РјР°С” РЅР°РґС–СЃР»Р°С‚Рё С‚РѕРєРµРЅ РїСЂРё РїС–РґРєР»СЋС‡РµРЅРЅС–
             const token = socket.handshake.auth.token;
 
             if (!token) {
                 return next(new Error('Authentication error: Token not provided'));
             }
 
-            // Перевіряємо токен
+            // РџРµСЂРµРІС–СЂСЏС”РјРѕ С‚РѕРєРµРЅ
             const decoded = jwt.verify(token, process.env.JWT_SECRET);
 
-            // Знаходимо користувача в БД
+            // Р—РЅР°С…РѕРґРёРјРѕ РєРѕСЂРёСЃС‚СѓРІР°С‡Р° РІ Р‘Р”
             const user = await prisma.user.findUnique({
                 where: { id: decoded.userId },
                 select: { id: true, role: true }
@@ -42,9 +45,9 @@ function initSocket(httpServer) {
                 return next(new Error('Authentication error: User not found'));
             }
 
-            // Зберігаємо дані про користувача в самому об'єкті сокета
+            // Р—Р±РµСЂС–РіР°С”РјРѕ РґР°РЅС– РїСЂРѕ РєРѕСЂРёСЃС‚СѓРІР°С‡Р° РІ СЃР°РјРѕРјСѓ РѕР±'С”РєС‚С– СЃРѕРєРµС‚Р°
             socket.user = user;
-            next(); // Дозволяємо підключення
+            next(); // Р”РѕР·РІРѕР»СЏС”РјРѕ РїС–РґРєР»СЋС‡РµРЅРЅСЏ
 
         } catch (err) {
             console.error("Socket auth error:", err.message);
@@ -53,26 +56,26 @@ function initSocket(httpServer) {
     });
 
 
-    // Обробка нових підключень (після автентифікації)
+    // РћР±СЂРѕР±РєР° РЅРѕРІРёС… РїС–РґРєР»СЋС‡РµРЅСЊ (РїС–СЃР»СЏ Р°РІС‚РµРЅС‚РёС„С–РєР°С†С–С—)
     io.on('connection', (socket) => {
-        // Тепер ми маємо доступ до socket.user
+        // РўРµРїРµСЂ РјРё РјР°С”РјРѕ РґРѕСЃС‚СѓРї РґРѕ socket.user
         console.log(`A user connected: ${socket.id}, Role: ${socket.user.role}`);
 
-        // --- 3. СИСТЕМА КІМНАТ (Рівень 1) ---
-        // Автоматично приєднуємо користувача до кімнати на основі його ролі
-        socket.join(socket.user.role); // Напр. кімната 'ADMIN', 'MODERATOR', 'USER'
+        // --- 3. РЎРРЎРўР•РњРђ РљР†РњРќРђРў (Р С–РІРµРЅСЊ 1) ---
+        // РђРІС‚РѕРјР°С‚РёС‡РЅРѕ РїСЂРёС”РґРЅСѓС”РјРѕ РєРѕСЂРёСЃС‚СѓРІР°С‡Р° РґРѕ РєС–РјРЅР°С‚Рё РЅР° РѕСЃРЅРѕРІС– Р№РѕРіРѕ СЂРѕР»С–
+        socket.join(socket.user.role); // РќР°РїСЂ. РєС–РјРЅР°С‚Р° 'ADMIN', 'MODERATOR', 'USER'
 
-        // Також приєднуємо до персональної кімнати (для майбутніх приватних сповіщень)
+        // РўР°РєРѕР¶ РїСЂРёС”РґРЅСѓС”РјРѕ РґРѕ РїРµСЂСЃРѕРЅР°Р»СЊРЅРѕС— РєС–РјРЅР°С‚Рё (РґР»СЏ РјР°Р№Р±СѓС‚РЅС–С… РїСЂРёРІР°С‚РЅРёС… СЃРїРѕРІС–С‰РµРЅСЊ)
         socket.join(`user_${socket.user.id}`);
 
         console.log(`Socket ${socket.id} joined rooms: '${socket.user.role}' and 'user_${socket.user.id}'`);
 
-        // Обробка відключення
+        // РћР±СЂРѕР±РєР° РІС–РґРєР»СЋС‡РµРЅРЅСЏ
         socket.on('disconnect', () => {
             console.log('User disconnected:', socket.id);
         });
 
-        // Ви можете видалити ці обробники, якщо вони вам не потрібні
+        // Р’Рё РјРѕР¶РµС‚Рµ РІРёРґР°Р»РёС‚Рё С†С– РѕР±СЂРѕР±РЅРёРєРё, СЏРєС‰Рѕ РІРѕРЅРё РІР°Рј РЅРµ РїРѕС‚СЂС–Р±РЅС–
         socket.on('joinRoom', (roomName) => {
             socket.join(roomName);
             console.log(`Socket ${socket.id} joined room ${roomName}`);
@@ -85,10 +88,10 @@ function initSocket(httpServer) {
 
     });
 
-    return io; // Повертаємо ініціалізований екземпляр io
+    return io; // РџРѕРІРµСЂС‚Р°С”РјРѕ С–РЅС–С†С–Р°Р»С–Р·РѕРІР°РЅРёР№ РµРєР·РµРјРїР»СЏСЂ io
 }
 
-// Функція для отримання екземпляру io (щоб використовувати в контролерах)
+// Р¤СѓРЅРєС†С–СЏ РґР»СЏ РѕС‚СЂРёРјР°РЅРЅСЏ РµРєР·РµРјРїР»СЏСЂСѓ io (С‰РѕР± РІРёРєРѕСЂРёСЃС‚РѕРІСѓРІР°С‚Рё РІ РєРѕРЅС‚СЂРѕР»РµСЂР°С…)
 function getIO() {
     if (!io) {
         throw new Error("Socket.IO not initialized!");
@@ -96,4 +99,4 @@ function getIO() {
     return io;
 }
 
-module.exports = { initSocket, getIO }; // Експортуємо функції
+module.exports = { initSocket, getIO }; // Р•РєСЃРїРѕСЂС‚СѓС”РјРѕ С„СѓРЅРєС†С–С—
