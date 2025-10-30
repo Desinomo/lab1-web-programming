@@ -3,12 +3,12 @@ const { PrismaClient } = require("@prisma/client");
 const { getIO } = require('../socket');
 
 const prisma = new PrismaClient();
-// 👈 ВИПРАВЛЕНО: Видалено 'const io = getIO()' звідси
+// 👈 Видалено 'const io = getIO()' звідси
 
 // Отримати всі рецепти
 const getAllRecipes = async (req, res, next) => {
     try {
-        // 👈 ВИПРАВЛЕНО: 'io' тут не потрібен
+        // 'io' тут не потрібен
         const {
             page = 1,
             limit = 10,
@@ -44,6 +44,7 @@ const getAllRecipes = async (req, res, next) => {
             prisma.recipe.count({ where })
         ]);
 
+        // Групування - це складна логіка, залишаємо як є
         const grouped = recipes.reduce((acc, r) => {
             if (!acc[r.productId]) {
                 acc[r.productId] = { product: r.product, ingredients: [] };
@@ -51,7 +52,6 @@ const getAllRecipes = async (req, res, next) => {
             acc[r.productId].ingredients.push({
                 id: r.ingredient.id,
                 name: r.ingredient.name,
-                // 'unit' знаходиться в моделі Ingredient, не Recipe
                 // unit: r.ingredient.unit, // Розкоментуйте, якщо додали 'unit' в Ingredient
                 quantity: r.quantity
             });
@@ -73,12 +73,13 @@ const getAllRecipes = async (req, res, next) => {
     }
 };
 
-// Отримати конкретний рецепт по продукту
+// Отримати конкретний рецепт по ID
 const getRecipeById = async (req, res, next) => {
     try {
-        const recipeId = Number(req.params.id); // 👈 Це ID самого рецепту
-        const recipe = await prisma.recipe.findUnique({ // 👈 Змінено на findUnique
-            where: { id: recipeId }, // 👈 Змінено на 'id'
+        // 'io' тут не потрібен
+        const recipeId = Number(req.params.id); // 👈 ВИПРАВЛЕНО: Це ID самого рецепту
+        const recipe = await prisma.recipe.findUnique({ // 👈 ВИПРАВЛЕНО: на findUnique
+            where: { id: recipeId }, // 👈 ВИПРАВЛЕНО: шукаємо за 'id'
             include: { product: true, ingredient: true }
         });
 
@@ -86,8 +87,7 @@ const getRecipeById = async (req, res, next) => {
             return res.status(404).json({ error: "Recipe not found" });
         }
 
-        // Не потрібно групувати, бо це вже один рецепт
-        res.json(recipe);
+        res.json(recipe); // Повертаємо один рецепт
     } catch (err) {
         next(err);
     }
@@ -96,7 +96,7 @@ const getRecipeById = async (req, res, next) => {
 // Створити рецепт
 const createRecipe = async (req, res, next) => {
     try {
-        const io = getIO(); // 👈 ВИПРАВЛЕНО: Виклик всередині
+        const io = getIO(); // 👈 Виклик всередині
         const { productId, ingredientId, quantity } = req.body;
         const recipe = await prisma.recipe.create({
             data: { productId, ingredientId, quantity },
@@ -111,7 +111,7 @@ const createRecipe = async (req, res, next) => {
 // Оновити рецепт
 const updateRecipe = async (req, res, next) => {
     try {
-        const io = getIO(); // 👈 ВИПРАВЛЕНО: Виклик всередині
+        const io = getIO(); // 👈 Виклик всередині
         const { productId, ingredientId, quantity } = req.body;
         const recipeId = Number(req.params.id);
         const recipe = await prisma.recipe.update({
@@ -128,7 +128,7 @@ const updateRecipe = async (req, res, next) => {
 // Видалити рецепт
 const deleteRecipe = async (req, res, next) => {
     try {
-        const io = getIO(); // 👈 ВИПРАВЛЕНО: Виклик всередині
+        const io = getIO(); // 👈 Виклик всередині
         const recipeId = Number(req.params.id);
 
         const recipeToDelete = await prisma.recipe.findUnique({

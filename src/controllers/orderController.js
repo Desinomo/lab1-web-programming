@@ -1,7 +1,9 @@
-﻿const { PrismaClient } = require("@prisma/client");
-const { getIO } = require('../socket'); // 👈 ВИПРАВЛЕНО: Імпорт з socket
+﻿// controllers/orderController.js
+const { PrismaClient } = require("@prisma/client");
+const { getIO } = require('../socket'); // 👈 Імпорт з socket
 
 const prisma = new PrismaClient();
+// 👈 Видалено 'let io = null', 'setIO', 'safeEmit'
 
 // --- GET ALL ORDERS (optimized) ---
 const getAllOrders = async (req, res, next) => {
@@ -105,7 +107,7 @@ const getOrderById = async (req, res, next) => {
 // --- CREATE ORDER ---
 const createOrder = async (req, res, next) => {
     try {
-        const io = getIO(); // 👈 ВИПРАВЛЕНО: Виклик всередині
+        const io = getIO(); // 👈 Виклик всередині
         const { customerId, totalPrice, details } = req.body;
         const order = await prisma.order.create({
             data: {
@@ -147,7 +149,7 @@ const createOrder = async (req, res, next) => {
 // --- UPDATE ORDER ---
 const updateOrder = async (req, res, next) => {
     try {
-        const io = getIO(); // 👈 ВИПРАВЛЕНО: Виклик всередині
+        const io = getIO(); // 👈 Виклик всередині
         const { totalPrice, status } = req.body; // 'status' у вас немає в схемі, але я залишив
         const orderId = Number(req.params.id);
 
@@ -174,13 +176,13 @@ const updateOrder = async (req, res, next) => {
             },
         });
 
-        io.emit("order:updated", order);
+        io.emit("order:updated", order); // Глобальна подія
         // if (status && status !== existingOrder.status) { // Розкоментуйте, якщо додасте 'status'
-        //     io.to('ADMIN').to('MODERATOR').emit("notification:new", {
-        //         type: "info",
-        //         message: `Status of order #${order.id} updated to '${status}'.`,
-        //         orderId: order.id,
-        //     });
+        //     io.to('ADMIN').to('MODERATOR').emit("notification:new", {
+        //         type: "info",
+        //         message: `Status of order #${order.id} updated to '${status}'.`,
+        //         orderId: order.id,
+        //     });
         // }
 
         res.json(order);
@@ -192,7 +194,7 @@ const updateOrder = async (req, res, next) => {
 // --- DELETE ORDER ---
 const deleteOrder = async (req, res, next) => {
     try {
-        const io = getIO(); // 👈 ВИПРАВЛЕНО: Виклик всередині
+        const io = getIO(); // 👈 Виклик всередині
         const orderId = Number(req.params.id);
         const existingOrder = await prisma.order.findUnique({ where: { id: orderId } });
         if (!existingOrder) return res.status(404).json({ error: "Order not found" });
@@ -201,7 +203,7 @@ const deleteOrder = async (req, res, next) => {
         await prisma.orderDetail.deleteMany({ where: { orderId: orderId } });
         await prisma.order.delete({ where: { id: orderId } });
 
-        io.emit("order:deleted", { id: orderId });
+        io.emit("order:deleted", { id: orderId }); // Глобальна подія
         res.status(200).json({ message: "Order deleted" });
     } catch (err) {
         if (err.code === "P2025")

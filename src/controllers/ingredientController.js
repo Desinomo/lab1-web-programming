@@ -1,13 +1,13 @@
 ﻿// controllers/ingredientController.js
 const { PrismaClient } = require('@prisma/client');
-const { getIO } = require('../socket');
+const { getIO } = require('../socket'); // 👈 Імпорт з socket
 
 const prisma = new PrismaClient();
-// 👈 ВИПРАВЛЕНО: Видалено 'const io = getIO()' звідси
+// 👈 Видалено 'const io = getIO()' звідси
 
 const getAllIngredients = async (req, res, next) => {
     try {
-        // 👈 ВИПРАВЛЕНО: 'io' тут не потрібен
+        // 'io' тут не потрібен
         const { page = 1, limit = 10, search, sortBy = 'name', order = 'asc' } = req.query;
         const skip = (parseInt(page) - 1) * parseInt(limit);
 
@@ -70,7 +70,7 @@ const getIngredientById = async (req, res, next) => {
 
 const createIngredient = async (req, res, next) => {
     try {
-        const io = getIO(); // 👈 ВИПРАВЛЕНО: Виклик всередині
+        const io = getIO(); // 👈 Виклик всередині
         const { name } = req.body;
         if (!name || name.trim().length < 2) return res.status(400).json({ error: "Ingredient name must be at least 2 characters" });
 
@@ -88,7 +88,7 @@ const createIngredient = async (req, res, next) => {
 
 const updateIngredient = async (req, res, next) => {
     try {
-        const io = getIO(); // 👈 ВИПРАВЛЕНО: Виклик всередині
+        const io = getIO(); // 👈 Виклик всередині
         const ingredientId = Number(req.params.id);
         const { name } = req.body;
         if (!name || name.trim().length < 2) return res.status(400).json({ error: "Ingredient name must be at least 2 characters" });
@@ -110,7 +110,7 @@ const updateIngredient = async (req, res, next) => {
 
 const deleteIngredient = async (req, res, next) => {
     try {
-        const io = getIO(); // 👈 ВИПРАВЛЕНО: Виклик всередині
+        const io = getIO(); // 👈 Виклик всередині
         const ingredientId = Number(req.params.id);
         const existing = await prisma.ingredient.findUnique({ where: { id: ingredientId } });
         if (!existing) return res.status(404).json({ error: "Ingredient not found for deletion" });

@@ -2,14 +2,14 @@
 const { PrismaClient } = require('@prisma/client');
 const fs = require('fs').promises;
 const path = require('path');
-const { getIO } = require('../socket'); // 👈 ВИПРАВЛЕНО: Тільки імпорт
+const { getIO } = require('../socket'); // 👈 Імпорт з socket
 
 const prisma = new PrismaClient();
-// 👈 ВИПРАВЛЕНО: Видалено 'const io = getIO()' звідси
+// 👈 Видалено 'const io = getIO()' звідси
 
 const uploadFile = async (req, res, next) => {
     try {
-        const io = getIO(); // 👈 ВИПРАВЛЕНО: Виклик переміщено всередину
+        const io = getIO(); // 👈 Виклик всередині
         if (!req.file) return res.status(400).json({ error: 'File not provided' });
 
         const fileData = {
@@ -17,7 +17,7 @@ const uploadFile = async (req, res, next) => {
             originalName: req.file.originalname,
             mimetype: req.file.mimetype,
             size: req.file.size,
-            path: req.file.path,
+            path: req.file.path, // Увага: це буде працювати некоректно на Render
             uploadedBy: req.user.userId
         };
 
@@ -40,11 +40,8 @@ const getFile = async (req, res, next) => {
         const file = await prisma.file.findUnique({ where: { id: fileId } });
         if (!file) return res.status(404).json({ error: 'File not found' });
 
-        // ВАЖЛИВО: res.sendFile не буде працювати на Render
-        // На Render файли, завантажені у 'uploads', є тимчасовими.
-        // Вам потрібен сервіс типу S3, Cloudinary або Render Disks (платний).
-        // res.sendFile(path.resolve(file.path)); 
-        // Поки що, давайте просто повернемо дані файлу
+        // 👈 ВИПРАВЛЕНО: res.sendFile не буде працювати на Render
+        // Повертаємо JSON, а не сам файл, оскільки файлова система Render ефемерна.
         res.json(file);
 
     } catch (err) { next(err); }
@@ -52,7 +49,7 @@ const getFile = async (req, res, next) => {
 
 const deleteFile = async (req, res, next) => {
     try {
-        const io = getIO(); // 👈 ВИПРАВЛЕНО: Виклик переміщено всередину
+        const io = getIO(); // 👈 Виклик всередині
         const fileId = parseInt(req.params.id);
         const file = await prisma.file.findUnique({ where: { id: fileId } });
         if (!file) return res.status(404).json({ error: 'File not found' });
@@ -62,8 +59,7 @@ const deleteFile = async (req, res, next) => {
         }
 
         await prisma.file.delete({ where: { id: fileId } });
-        // Спробуємо видалити файл, але не будемо панікувати, якщо не вийде (особливо на Render)
-        await fs.unlink(file.path).catch(console.error);
+        await fs.unlink(file.path).catch(console.error); // Спробуємо видалити, але не ламаємося, якщо не вийде
 
         io.emit('file:deleted', { id: fileId }); // Глобальна подія
         io.to('ADMIN').to('MODERATOR').emit('notification:new', { type: 'warning', message: `File deleted: ${file.originalName}`, fileId: file.id });

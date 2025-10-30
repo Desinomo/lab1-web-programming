@@ -7,7 +7,7 @@ const rateLimit = require("express-rate-limit");
 const swaggerUi = require("swagger-ui-express");
 const swaggerSpecs = require("./config/swagger");
 const http = require('http');
-const { initSocket } = require('./socket'); // 👈 Тільки initSocket
+const { initSocket } = require('./socket'); // 👈 Імпортуємо тільки initSocket
 
 // Роути
 const userRoutes = require("./routes/userRoutes");
@@ -23,15 +23,16 @@ dotenv.config();
 const app = express();
 const server = http.createServer(app);
 
-// Ініціалізуємо Socket.IO і передаємо йому http-сервер
+// Ініціалізуємо Socket.IO
 const io = initSocket(server);
 
 // Middleware
 app.use(helmet());
 app.use(cors({
+    // Додаємо admin.socket.io для тестування
     origin: [
         process.env.FRONTEND_URL || 'http://localhost:5173',
-        'https://admin.socket.io' // 👈 Додайте цей рядок
+        'https://admin.socket.io'
     ],
     credentials: true
 }));
@@ -74,7 +75,7 @@ app.use((err, req, res, next) => {
 
 // --- Запуск сервера ---
 const PORT = process.env.PORT || 3000;
-// Важливо: ми запускаємо 'server', а не 'app'
+// Запускаємо 'server', а не 'app'
 server.listen(PORT, () => {
     console.log(`Сервер запущено на порту ${PORT}`);
     console.log(`Документація API: http://localhost:${PORT}/api-docs`);

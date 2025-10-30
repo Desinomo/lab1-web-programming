@@ -1,8 +1,11 @@
 ﻿const { PrismaClient } = require("@prisma/client");
 const Joi = require("joi");
-const { getIO } = require('../socket'); // 👈 ВИПРАВЛЕНО: Імпорт з socket
+// 1. ВИПРАВЛЕНО: Імпортуємо getIO з єдиного файлу socket.js
+const { getIO } = require('../socket');
 
 const prisma = new PrismaClient();
+
+// --- 2. ВИДАЛЕНО: Власний (неправильний) setIO/getIO ---
 
 // --- Validation schema ---
 const productSchema = Joi.object({
@@ -30,6 +33,8 @@ const getAllProducts = async (req, res, next) => {
             if (maxPrice) where.price.lte = parseFloat(maxPrice);
         }
 
+        // Примітка: 'createdAt' тут - це ПРАВИЛЬНО, тому що у вашій схемі Product є 'createdAt'.
+        // Це 'orderController' мав помилку (там 'date').
         const validSortFields = ['id', 'name', 'price', 'createdAt'];
         const safeSortBy = validSortFields.includes(sortBy) ? sortBy : 'id';
         const orderBy = { [safeSortBy]: order };
@@ -101,25 +106,27 @@ const getProductById = async (req, res, next) => {
 // --- CREATE product ---
 const createProduct = async (req, res, next) => {
     try {
-        const io = getIO(); // 👈 ВИПРАВЛЕНО: Виклик всередині
+        // 3. ВИПРАВЛЕНО: 'io' отримуємо всередині функції
+        const io = getIO();
         const { error, value } = productSchema.validate(req.body);
         if (error) return res.status(400).json({ error: error.details[0].message });
 
         const product = await prisma.product.create({
             data: value,
             select: {
-                id: true,
-                name: true,
-                description: true,
-                price: true,
-                createdAt: true,
+                id: true, name: true, description: true, price: true, createdAt: true,
                 recipes: { select: { id: true } }
             }
         });
 
-        io.emit('product:created', product); // Глобальна подія
-        // РІВЕНЬ 1 (КІМНАТИ): Сповіщення тільки для адмінів/модераторів
-        io.to('ADMIN').to('MODERATOR').emit('notification:new', { type: 'success', message: `New product added: ${product.name}`, productId: product.id });
+        io.emit('product:created', product); // (Пункт 4) Глобальна подія для всіх
+
+        // 4. ВИПРАВЛЕНО (Рівень 1): Сповіщення тільки для адмінів/модераторів
+        io.to('ADMIN').to('MODERATOR').emit('notification:new', {
+            type: 'success',
+            message: `New product added: ${product.name}`,
+            productId: product.id
+        });
 
         res.status(201).json(product);
     } catch (err) {
@@ -133,7 +140,7 @@ const createProduct = async (req, res, next) => {
 // --- UPDATE product ---
 const updateProduct = async (req, res, next) => {
     try {
-        const io = getIO(); // 👈 ВИПРАВЛЕНО: Виклик всередині
+        const io = getIO(); // 👈 ВИПРАВЛЕНО
         const productId = Number(req.params.id);
         const { error, value } = productSchema.validate(req.body);
         if (error) return res.status(400).json({ error: error.details[0].message });
@@ -145,17 +152,18 @@ const updateProduct = async (req, res, next) => {
             where: { id: productId },
             data: value,
             select: {
-                id: true,
-                name: true,
-                description: true,
-                price: true,
-                createdAt: true,
+                id: true, name: true, description: true, price: true, createdAt: true,
                 recipes: { select: { id: true } }
             }
         });
 
         io.emit('product:updated', product); // Глобальна подія
-        io.to('ADMIN').to('MODERATOR').emit('notification:new', { type: 'info', message: `Product updated: ${product.name}`, productId: product.id });
+        // 👇 ВИПРАВЛЕНО (Рівень 1)
+        io.to('ADMIN').to('MODERATOR').emit('notification:new', {
+            type: 'info',
+            message: `Product updated: ${product.name}`,
+            productId: product.id
+        });
 
         res.json(product);
     } catch (err) {
@@ -169,25 +177,43 @@ const updateProduct = async (req, res, next) => {
 // --- DELETE product ---
 const deleteProduct = async (req, res, next) => {
     try {
-        const io = getIO(); // 👈 ВИПРАВЛЕНО: Виклик всередині
+        const io = getIO(); // 👈 ВИПРАВЛЕНО
         const productId = Number(req.params.id);
         const existingProduct = await prisma.product.findUnique({ where: { id: productId } });
         if (!existingProduct) return res.status(404).json({ error: "Product not found for deletion" });
 
+        // Додаємо перевірку: чи не використовується продукт в рецептах?
+        const recipeCount = await prisma.recipe.count({ where: { productId: productId } });
+        if (recipeCount > 0) {
+            return res.status(400).json({ error: `Cannot delete product. It is used in ${recipeCount} recipe(s).` });
+        }
+
+        // Додаємо перевірку: чи не використовується продукт в замовленнях?
+        const orderDetailCount = await prisma.orderDetail.count({ where: { productId: productId } });
+        if (orderDetailCount > 0) {
+            return res.status(400).json({ error: `Cannot delete product. It is part of ${orderDetailCount} order(s).` });
+        }
+
         await prisma.product.delete({ where: { id: productId } });
 
         io.emit('product:deleted', { id: productId }); // Глобальна подія
-        io.to('ADMIN').to('MODERATOR').emit('notification:new', { type: 'warning', message: `Product deleted: ${existingProduct.name}`, productId });
+        // 👇 ВИПРАВЛЕНО (Рівень 1)
+        io.to('ADMIN').to('MODERATOR').emit('notification:new', {
+            type: 'warning',
+            message: `Product deleted: ${existingProduct.name}`,
+            productId
+        });
 
         res.status(200).json({ message: "Product deleted" });
     } catch (err) {
         if (err.code === 'P2025') return res.status(404).json({ error: "Product not found for deletion" });
+        // Ця помилка P2003 тепер обробляється нашими перевірками вище, але залишаємо її
         if (err.code === 'P2003') return res.status(400).json({ error: "Cannot delete product because it is currently in use" });
         next(err);
     }
 };
 
-// 👈 ВИПРАВЛЕНО: Видалено 'setIO' та 'getIO' з експорту
+// 5. ВИПРАВЛЕНО: Видалено 'setIO' та 'getIO' з експорту
 module.exports = {
     getAllProducts,
     getProductById,
