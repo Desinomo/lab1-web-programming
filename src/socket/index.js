@@ -37,7 +37,7 @@ function initSocket(httpServer) {
             const decoded = jwt.verify(token, process.env.JWT_SECRET);
 
             // Перевіряємо, чи такий користувач вже онлайн
-            if (onlineUsers.has(decoded.id.toString())) {
+            if (onlineUsers.has(decoded.userId.toString())) {
                 // Можна реалізувати логіку "тільки одне підключення"
                 // return next(new Error("User already connected from another tab."));
             }
