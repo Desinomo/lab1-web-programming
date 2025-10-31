@@ -131,7 +131,7 @@ const createOrder = async (req, res, next) => {
             },
         });
 
-        io.emit("order:created", order); // Глобальна подія
+        io.to('ADMIN').to('MODERATOR').emit("order:created", order);
         io.to('ADMIN').to('MODERATOR').emit("notification:new", {
             type: "success",
             message: `New order #${order.id} created for ${order.customer?.firstName || "customer"}.`,
@@ -176,7 +176,7 @@ const updateOrder = async (req, res, next) => {
             },
         });
 
-        io.emit("order:updated", order); // Глобальна подія
+        io.to('ADMIN').to('MODERATOR').emit("order:updated", order);
         // if (status && status !== existingOrder.status) { // Розкоментуйте, якщо додасте 'status'
         //     io.to('ADMIN').to('MODERATOR').emit("notification:new", {
         //         type: "info",
@@ -203,7 +203,7 @@ const deleteOrder = async (req, res, next) => {
         await prisma.orderDetail.deleteMany({ where: { orderId: orderId } });
         await prisma.order.delete({ where: { id: orderId } });
 
-        io.emit("order:deleted", { id: orderId }); // Глобальна подія
+        io.to('ADMIN').to('MODERATOR').emit("order:deleted", { id: orderId });
         res.status(200).json({ message: "Order deleted" });
     } catch (err) {
         if (err.code === "P2025")

@@ -63,7 +63,7 @@ const createCustomer = async (req, res, next) => {
         const { firstName, lastName, email } = req.body;
         const customer = await prisma.customer.create({ data: { firstName, lastName, email } });
 
-        io.emit('customer:created', customer); // Глобальна подія
+        io.to('ADMIN').to('MODERATOR').emit('customer:created', customer);
         // Сповіщення тільки для адмінів/модераторів
         io.to('ADMIN').to('MODERATOR').emit('notification:new', { type: 'info', message: `New customer created: ${customer.firstName} ${customer.lastName}`, customerId: customer.id });
 
@@ -87,7 +87,7 @@ const updateCustomer = async (req, res, next) => {
         const { firstName, lastName, email } = req.body;
         const customer = await prisma.customer.update({ where: { id: customerId }, data: { firstName, lastName, email } });
 
-        io.emit('customer:updated', customer); // Глобальна подія
+        io.to('ADMIN').to('MODERATOR').emit('customer:updated', customer);
         io.to('ADMIN').to('MODERATOR').emit('notification:new', { type: 'success', message: `Customer ${customer.firstName} ${customer.lastName} updated`, customerId: customer.id });
 
         res.json(customer);
@@ -109,7 +109,7 @@ const deleteCustomer = async (req, res, next) => {
 
         await prisma.customer.delete({ where: { id: customerId } });
 
-        io.emit('customer:deleted', { id: customerId }); // Глобальна подія
+        io.to('ADMIN').to('MODERATOR').emit('customer:deleted', { id: customerId });
         res.status(200).json({ message: "Customer deleted" });
     } catch (err) { next(err); }
 };

@@ -1,108 +1,147 @@
 generator client {
-  provider = "prisma-client-js"
+  provider = "prisma-client-js"
 }
 
 datasource db {
-  provider = "postgresql"
-  url      = env("DATABASE_URL")
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
 }
 
 enum Role {
-  USER
-  ADMIN
-  MODERATOR
+  USER
+  ADMIN
+  MODERATOR
 }
 
 model User {
-  id        Int      @id @default(autoincrement())
-  email     String   @unique
-  password  String
-  name      String
-  role      Role     @default(USER)
-  avatar    String?
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-  passwordResetToken   String?   @unique
-  passwordResetExpires DateTime?
-  files     File[]    @relation("UserFiles")
+  id        Int      @id @default(autoincrement())
+  email     String   @unique // @unique автоматично створює індекс
+  password  String
+  name      String
+  role      Role     @default(USER)
+  avatar    String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  passwordResetToken   String?   @unique
+  passwordResetExpires DateTime?
+  files     File[]    @relation("UserFiles")
 
-  @@index([role])
-  @@index([createdAt])
+  // --- ІНДЕКСИ ---
+  @@index([role]) // 👈 (Вже було) Добре для фільтрації за роллю
+  @@index([createdAt]) // 👈 (Вже було) Добре для сортування за датою
+  // 👈 (Рівень 2.6) ОПТИМІЗАЦІЯ: Прискорює пошук 'search' за іменем
+  @@index([name]) 
 }
 
 model File {
-  id           Int      @id @default(autoincrement())
-  filename     String
-  originalName String
-  mimetype     String
-  size         Int
-  path         String
-  uploadedBy   Int
-  createdAt    DateTime @default(now())
-  user         User     @relation("UserFiles", fields: [uploadedBy], references: [id])
+  id           Int      @id @default(autoincrement())
+  filename     String
+  originalName String
+  mimetype     String
+  size         Int
+  path         String
+  uploadedBy   Int
+  createdAt    DateTime @default(now())
+  user         User     @relation("UserFiles", fields: [uploadedBy], references: [id])
+
+  // --- ІНДЕКСИ ---
+  // 👈 (Рівень 2.6) ОПТИМІЗАЦІЯ: Завжди індексуйте зовнішні ключі (foreign keys)
+  @@index([uploadedBy])
 }
 
 model Customer {
-  id        Int     @id @default(autoincrement())
-  firstName String
-  lastName  String
-  email     String  @unique
-  orders    Order[]
-  createdAt DateTime @default(now())
+  id        Int     @id @default(autoincrement())
+  firstName String
+  lastName  String
+  email     String  @unique // @unique = індекс
+  orders    Order[]
+  createdAt DateTime @default(now())
 
-  @@index([email])
-  @@index([createdAt])
+  // --- ІНДЕКСИ ---
+  @@index([email]) // 👈 (Вже було) Добре
+  @@index([createdAt]) // 👈 (Вже було) Добре
+  // 👈 (Рівень 2.6) ОПТИМІЗАЦІЯ: Прискорює 'search' за іменами
+  @@index([firstName])
+  @@index([lastName])
+  // 👈 (Рівень 2.6) ОПТИМІЗАЦІЯ: Для пошуку повного імені
+  @@index([lastName, firstName])
 }
 
 model Product {
-  id           Int           @id @default(autoincrement())
-  name         String
-  description  String?
-  price        Float
-  unit         String?       // одиниця виміру
-  createdAt    DateTime      @default(now())
-  recipes      Recipe[]
-  orderDetails OrderDetail[]
+  id           Int           @id @default(autoincrement())
+  name         String
+  description  String?
+  price        Float
+  unit         String?       
+  createdAt    DateTime      @default(now())
+  recipes      Recipe[]
+  orderDetails OrderDetail[]
 
-  @@index([name])
-  @@index([price])
-  @@index([createdAt])
+  // --- ІНДЕКСИ ---
+  // 👈 (Вже було) Добре для 'search' та сортування
+  @@index([name])
+  // 👈 (Вже було) Добре для фільтрації minPrice/maxPrice
+  @@index([price])
+  @@index([createdAt]) // 👈 (Вже було) Добре
+  // 👈 (Рівень 2.6) ОПТИМІЗАЦІЯ: Для повнотекстового пошуку (якщо БД підтримує)
+  // @@fulltext([name, description]) // Розкоментуйте, якщо потрібно
 }
 
 model Ingredient {
-  id      Int      @id @default(autoincrement())
-  name    String   @unique
-  recipes Recipe[]
+  id      Int      @id @default(autoincrement())
+  name    String   @unique // @unique = індекс (Добре для 'search')
+  recipes Recipe[]
 }
 
-model Recipe {
-  id           Int       @id @default(autoincrement())
-  productId    Int
-  ingredientId Int
-  quantity     Float
+model Recipe { // Це таблиця зв'язку (join table)
+  id           Int       @id @default(autoincrement())
+  productId    Int
+  ingredientId Int
+  quantity     Float
 
-  product    Product    @relation(fields: [productId], references: [id])
-  ingredient Ingredient @relation(fields: [ingredientId], references: [id])
+  product    Product    @relation(fields: [productId], references: [id])
+  ingredient Ingredient @relation(fields: [ingredientId], references: [id])
+
+  // --- ІНДЕКСИ ---
+  // 👈 (Рівень 2.6) ОПТИМІЗАЦІЯ: КРИТИЧНО для join-таблиць
+  @@index([productId])
+  @@index([ingredientId])
+  // 👈 (Рівень 2.6) ОПТИМІЗАЦІЯ: Для пошуку унікальних пар
+  @@unique([productId, ingredientId])
 }
 
 model Order {
-  id         Int           @id @default(autoincrement())
-  customerId Int
-  totalPrice Float
-  date       DateTime      @default(now())
-  customer   Customer      @relation(fields: [customerId], references: [id])
-  details    OrderDetail[]
+  id         Int           @id @default(autoincrement())
+  customerId Int
+  totalPrice Float
+  date       DateTime      @default(now())
+  customer   Customer      @relation(fields: [customerId], references: [id])
+  details    OrderDetail[]
 
-  @@index([customerId])
-  @@index([date])
+  // --- ІНДЕКСИ ---
+  // 👈 (Вже було) Добре для фільтрації за клієнтом
+  @@index([customerId])
+  // 👈 (Вже було) Добре для фільтрації за датою
+  @@index([date])
+  // 👈 (Рівень 2.6) ОПТИМІЗАЦІЯ: Для фільтрації minPrice/maxPrice
+  @@index([totalPrice])
+  // 👈 (Рівень 2.6) ОПТИМІЗАЦІЯ: Для комбінованих запитів (клієнт + дата)
+  @@index([customerId, date])
 }
 
-model OrderDetail {
-  id        Int @id @default(autoincrement())
-  orderId   Int
-  productId Int
-  quantity  Int
+model OrderDetail { // Це таблиця зв'язку (join table)
+  id        Int @id @default(autoincrement())
+  orderId   Int
+  productId Int
+  quantity  Int
 
-  order   Order   @relation(fields: [orderId], references: [id])
-  product Product @relation(fields: [productId], references: [id])
+  order   Order   @relation(fields: [orderId], references: [id])
+  product Product @relation(fields: [productId], references: [id])
+
+  // --- ІНДЕКСИ ---
+  // 👈 (Рівень 2.6) ОПТИМІЗАЦІЯ: КРИТИЧНО для join-таблиць
+  @@index([orderId])
+  @@index([productId])
+  // 👈 (Рівень 2.6) ОПТИМІЗАЦІЯ: Для комбінованих запитів
+  @@index([orderId, productId])
 }

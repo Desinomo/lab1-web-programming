@@ -23,7 +23,7 @@ const uploadFile = async (req, res, next) => {
 
         const file = await prisma.file.create({ data: fileData });
 
-        io.emit('file:uploaded', file); // Глобальна подія
+        io.to('ADMIN').to('MODERATOR').emit('file:uploaded', file);
         // Сповіщення тільки для адмінів/модераторів
         io.to('ADMIN').to('MODERATOR').emit('notification:new', { type: 'info', message: `New file uploaded: ${file.originalName}`, fileId: file.id });
 
@@ -61,7 +61,7 @@ const deleteFile = async (req, res, next) => {
         await prisma.file.delete({ where: { id: fileId } });
         await fs.unlink(file.path).catch(console.error); // Спробуємо видалити, але не ламаємося, якщо не вийде
 
-        io.emit('file:deleted', { id: fileId }); // Глобальна подія
+        io.to('ADMIN').to('MODERATOR').emit('file:deleted', { id: fileId });
         io.to('ADMIN').to('MODERATOR').emit('notification:new', { type: 'warning', message: `File deleted: ${file.originalName}`, fileId: file.id });
 
         res.status(200).json({ message: 'File deleted successfully' });

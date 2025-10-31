@@ -7,7 +7,8 @@ const rateLimit = require("express-rate-limit");
 const swaggerUi = require("swagger-ui-express");
 const swaggerSpecs = require("./config/swagger");
 const http = require('http');
-const { initSocket } = require('./socket'); // 👈 Імпортуємо тільки initSocket
+const { initSocket } = require('./socket');
+const jwt = require('jsonwebtoken'); // 👈 **(Рівень 2) Додано JWT**
 
 // Роути
 const userRoutes = require("./routes/userRoutes");
@@ -26,10 +27,38 @@ const server = http.createServer(app);
 // Ініціалізуємо Socket.IO
 const io = initSocket(server);
 
+// --- (Рівень 2) Автентифікація WebSocket ---
+// Ця middleware-функція буде перевіряти JWT токен при кожній
+// новій спробі WebSocket-підключення.
+io.use((socket, next) => {
+    // 1. Отримуємо токен, який клієнт має надіслати в `auth.token`
+    const token = socket.handshake.auth.token;
+
+    if (!token) {
+        // 2. Якщо токена немає, відхиляємо підключення
+        return next(new Error("Автентифікація не пройдена: Токен не надано."));
+    }
+
+    // 3. Верифікуємо токен
+    //    Переконайтеся, що JWT_SECRET є у вашому .env файлі
+    jwt.verify(token, process.env.JWT_SECRET, (err, userPayload) => {
+        if (err) {
+            // 4. Якщо токен невалідний (прострочений, неправильний підпис), відхиляємо
+            return next(new Error("Автентифікація не пройдена: Невалідний токен."));
+        }
+
+        // 5. Якщо токен валідний, зберігаємо дані користувача
+        //    в об'єкті 'socket' для подальшого використання
+        socket.user = userPayload; // Наприклад, { id: 1, role: 'admin' }
+        next();
+    });
+});
+// ------------------------------------------
+
+
 // Middleware
 app.use(helmet());
 app.use(cors({
-    // Додаємо admin.socket.io для тестування
     origin: [
         process.env.FRONTEND_URL || 'http://localhost:5173',
         'https://admin.socket.io'
@@ -75,7 +104,6 @@ app.use((err, req, res, next) => {
 
 // --- Запуск сервера ---
 const PORT = process.env.PORT || 3000;
-// Запускаємо 'server', а не 'app'
 server.listen(PORT, () => {
     console.log(`Сервер запущено на порту ${PORT}`);
     console.log(`Документація API: http://localhost:${PORT}/api-docs`);
